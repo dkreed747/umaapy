@@ -1,0 +1,51 @@
+image: "python:3.13"
+
+stages:
+  - lint
+  - test
+  - build
+  - deploy
+
+lint:
+  stage: lint
+  tags:
+    - dkr-run
+  script:
+    - echo "Linting will happen here"
+
+test:
+  stage: test
+  tags:
+    - dkr-run
+  script:
+    - echo "Testing will happen here"
+
+container:
+  stage: build
+  tags:
+    - dkr-run
+  script:
+    - echo "Docker build will happen here"
+
+package:
+  stage: build
+  tags:
+    - dkr-run
+  script:
+    - echo "PyPI package build will happen here"
+
+docker-hub:
+  stage: deploy
+  tags:
+    - dkr-run
+  when: manual
+  script:
+    - echo "Publish to docker hub will happen here"
+
+pypi:
+  stage: deploy
+  tags:
+    - dkr-run
+  when: manual
+  script:
+    - echo "Publish to package registry will happen here"
