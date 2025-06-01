@@ -1,0 +1,11 @@
+services:
+  umaapy-dev:
+    container_name: umaapy-dev
+    build:
+      context: .
+      dockerfile: ./Dockerfile
+    volumes:
+      - .:/workspace:cached
+    tty: true
+    stdin_open: true
+    command: /bin/sh -c "while sleep 1000; do :; done"
