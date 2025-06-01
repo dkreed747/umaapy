@@ -20,7 +20,7 @@ test:
   script:
     - echo "Testing will happen here"
 
-image:
+container:
   stage: build
   tags:
     - dkr-run
