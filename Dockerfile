@@ -1,7 +1,10 @@
-FROM python:3.13
-
+ARG BASE_IMAGE=python
+ARG BASE_IMAGE_TAG=3.13
 ARG CONNEXTDDS_VERSION=7.5.0
 
+FROM ${BASE_IMAGE}:${BASE_IMAGE_TAG} AS develop
+
+ARG CONNEXTDDS_VERSION
 ENV DEBIAN_FRONTEND=noninteractive
 
 # RTI
@@ -50,3 +53,13 @@ RUN apt-get update && \
     pip install rti.connext==${CONNEXTDDS_VERSION}
 
 COPY ./rti_license.dat ${RTI_LICENSE_FILE}
+
+FROM develop AS code_gen
+
+WORKDIR /tmp
+COPY ./UMAA ./UMAA
+COPY ./umaapy_types ./umaapy_types
+
+RUN rtiddsgen -language Python -inputIdl UMAA -r -joinInputFiles -joinedFilesOutputName umaapy_types -d ./umaapy_types && \
+    pip install ./umaapy_types && \
+    rm -rf ./UMAA ./umaapy_types
