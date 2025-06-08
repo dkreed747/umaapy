@@ -44,22 +44,12 @@ RUN mkdir -p /usr/share/keyrings && \
 
 RUN echo "rti-connext-dds-${CONNEXTDDS_VERSION}-common rti-connext-dds-${CONNEXTDDS_VERSION}/license/accepted select true" | debconf-set-selections
 
+COPY requirements.txt .
+
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
       rti-connext-dds-${CONNEXTDDS_VERSION} \
       rti-connext-dds-${CONNEXTDDS_VERSION}-tools-all \
       rti-connext-dds-${CONNEXTDDS_VERSION}-services-all && \
     rm -rf /var/lib/apt/lists/* && \
-    pip install rti.connext==${CONNEXTDDS_VERSION}
-
-COPY ./rti_license.dat ${RTI_LICENSE_FILE}
-
-FROM develop AS code_gen
-
-WORKDIR /tmp
-COPY ./UMAA ./UMAA
-COPY ./umaapy_types ./umaapy_types
-
-RUN rtiddsgen -language Python -inputIdl UMAA -r -joinInputFiles -joinedFilesOutputName umaapy_types -d ./umaapy_types && \
-    pip install ./umaapy_types && \
-    rm -rf ./UMAA ./umaapy_types
+    pip install -r requirements.txt

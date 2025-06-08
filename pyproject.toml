@@ -1,0 +1,47 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "umaapy"
+version = "0.1.0"
+description = "Python UMAA SDK for rapid autonomy development"
+readme = "README.md"
+requires-python = ">=3.13"
+
+authors = [
+    { name = "Devon Reed", email = "clr5436@psu.edu" }
+]
+
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+
+[project.urls]
+homepage = "https://git.psu.edu/psu-sweng/sweng-894/umaapy"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"my_package.types" = ["*.py"]
+
+[tool.black]
+line-length = 120
+target-version = ['py313']
+extend-exclude = '''
+/(
+    types\.py
+)/
+'''
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+junit_family = "xunit2"
+junit_suite_name = "pytest"
+addopts = "--maxfail=1 --disable-warnings -q --junitxml=report.xml"
