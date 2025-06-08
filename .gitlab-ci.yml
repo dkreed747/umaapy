@@ -13,21 +13,18 @@ lint:
   before_script:
     - pip install black
   script:
-    - black --check --diff src/my_package
+    - black --check --diff ./src/umaapy
 
 container:
   stage: build
   tags:
     - dkr-run
   image: docker:stable
-  services:
-    - docker:dind
-  variables:
-    DOCKER_HOST: tcp://docker:2375/
-    DOCKER_DRIVER: overlay2
   script:
+    - docker info
     - echo "$REGISTRY_TOKEN" | docker login --username "$REGISTRY_USER" --password-stdin "$REGISTRY"
-    - docker compose build umaapy-dev --push
+    - docker build --target develop -f ./Dockerfile -t dkreed747/umaapy-dev:latest .
+    - docker push dkreed747/umaapy-dev:latest
   artifacts:
     expire_in: 1h
     reports: {}
