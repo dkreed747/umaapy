@@ -38,6 +38,7 @@ test:
     - job: container
       artifacts: false
   before_script:
+    - rtiddsgen -language Python -inputIdl idls/UMAA -r -I idls -joinInputFiles -joinedFilesOutputName types -d ./src/umaapy
     - pip install --upgrade pip
     - pip install -e .
   script:
