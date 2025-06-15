@@ -79,7 +79,6 @@ package:
     TWINE_PASSWORD: $CI_JOB_TOKEN
   before_script:
     - pip install --upgrade pip build setuptools-scm twine
-    - cp "$RTI_LICENSE" "$RTI_LICENSE_FILE"
   script:
     - python -m twine upload --repository-url ${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/pypi dist/*
   artifacts:
@@ -101,6 +100,7 @@ container:
         IMAGE_TAG: '$CI_COMMIT_TAG'
   script:
     - docker info
+    - echo "$REGISTRY_TOKEN" | docker login --username "$REGISTRY_USER" --password-stdin "$REGISTRY"
     - docker tag dkreed747/umaapy-dev:latest dkreed747/umaapy-dev:$IMAGE_TAG
     - docker push dkreed747/umaapy-dev:$IMAGE_TAG
   artifacts:
