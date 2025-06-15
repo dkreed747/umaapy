@@ -22,6 +22,7 @@ var/
 *.egg-info/
 .installed.cfg
 *.egg
+_version.py
 
 # Installer logs
 pip-log.txt
@@ -41,6 +42,7 @@ coverage.xml
 .hypothesis/
 .pytest_cache/
 cover/
+report.xml
 
 # Translations
 *.mo
