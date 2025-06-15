@@ -111,8 +111,8 @@ container:
       fi
 
     # 2.3 pull, re-tag & push
-    - docker tag  "$dkreed747/umaapy-dev:$CI_COMMIT_SHORT_SHA" "$dkreed747/umaapy-dev:$TARGET_TAG"
-    - docker push "$dkreed747/umaapy-dev:$TARGET_TAG"
+    - docker tag  "dkreed747/umaapy-dev:$CI_COMMIT_SHORT_SHA" "dkreed747/umaapy-dev:$TARGET_TAG"
+    - docker push "dkreed747/umaapy-dev:$TARGET_TAG"
     - docker rmi dkreed747/umaapy-dev:$CI_COMMIT_SHORT_SHA
   artifacts:
     expire_in: 1h
