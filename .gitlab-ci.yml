@@ -1,51 +1,76 @@
-image: "python:3.13"
+image: "python:3.13-slim"
 
 stages:
   - lint
-  - test
   - build
+  - test
   - deploy
 
 lint:
   stage: lint
   tags:
     - dkr-run
+  before_script:
+    - pip install black
   script:
-    - echo "Linting will happen here"
-
-test:
-  stage: test
-  tags:
-    - dkr-run
-  script:
-    - echo "Testing will happen here"
+    - black --check --diff ./src/umaapy
 
 container:
   stage: build
   tags:
     - dkr-run
+  image: docker:stable
   script:
-    - echo "Docker build will happen here"
+    - docker info
+    - echo "$REGISTRY_TOKEN" | docker login --username "$REGISTRY_USER" --password-stdin "$REGISTRY"
+    - docker build --target develop -f ./Dockerfile -t dkreed747/umaapy-dev:latest .
+    - docker push dkreed747/umaapy-dev:latest
+  artifacts:
+    expire_in: 1h
+    reports: {}
+
+test:
+  stage: test
+  tags:
+    - dkr-run
+  image: dkreed747/umaapy-dev:latest
+  needs:
+    - job: container
+      artifacts: false
+  before_script:
+    - rtiddsgen -language Python -inputIdl idls/UMAA -r -I idls -joinInputFiles -joinedFilesOutputName types -d ./src/umaapy
+    - pip install --upgrade pip
+    - pip install -e .
+  script:
+    - pytest --maxfail=1 --disable-warnings -q
+  artifacts:
+    when: always
+    reports:
+      junit: report.xml
+    paths:
+      - .pytest_cache/
 
 package:
-  stage: build
-  tags:
-    - dkr-run
-  script:
-    - echo "PyPI package build will happen here"
-
-docker-hub:
   stage: deploy
   tags:
     - dkr-run
-  when: manual
+  image: dkreed747/umaapy-dev:latest
+  rules:
+    - if: $CI_COMMIT_TAG
+  before_script:
+    - pip install --upgrade pip
+    - pip install build twine
+    - cp "$RTI_LICENSE" "$RTI_LICENSE_FILE"
   script:
-    - echo "Publish to docker hub will happen here"
-
-pypi:
-  stage: deploy
-  tags:
-    - dkr-run
-  when: manual
-  script:
-    - echo "Publish to package registry will happen here"
+    - rtiddsgen -language Python -inputIdl idls/UMAA -r -I idls -joinInputFiles -joinedFilesOutputName types -d ./src/umaapy
+    - python -m build --sdist --wheel --outdir dist/
+    - |
+      TWINE_USERNAME="__token__" \
+      TWINE_PASSWORD="$CI_JOB_TOKEN" \
+      twine upload \
+        --repository-url "$PACKAGE_REGISTRY_URL" \
+        dist/*
+  artifacts:
+    paths:
+      - dist/
+    expire_in: 1 hour

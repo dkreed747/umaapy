@@ -1,0 +1,5 @@
+rti.connext==7.5.0
+pytest==8.4.0
+pytest-cov==6.1.1
+pytest-mock==3.14.1
+black==25.1.0
