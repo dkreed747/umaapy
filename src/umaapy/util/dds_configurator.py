@@ -13,7 +13,7 @@ class DDSConfigurator:
     PROFILE_DICT = {
         UmaaQosProfileCategory.COMMAND: "UMAAPyQosLib::Command",
         UmaaQosProfileCategory.CONFIG: "UMAAPyQosLib::Config",
-        UmaaQosProfileCategory.REPORT: "UMAAPyQosLib::Report"
+        UmaaQosProfileCategory.REPORT: "UMAAPyQosLib::Report",
     }
 
     _instance = None
@@ -32,8 +32,7 @@ class DDSConfigurator:
 
         self.qos_provider = dds.QosProvider(qos_file)
         self.participant = dds.DomainParticipant(
-            domain_id,
-            qos=self.qos_provider.participant_qos_from_profile("UMAAPyQosLib::ParticipantProfile")
+            domain_id, qos=self.qos_provider.participant_qos_from_profile("UMAAPyQosLib::ParticipantProfile")
         )
 
         self.publisher = dds.Publisher(self.participant)
@@ -45,13 +44,17 @@ class DDSConfigurator:
             self.topics[name] = dds.Topic(self.participant, name, data_type)
         return self.topics[name]
 
-    def get_writer(self, topic_name: str, data_type, profile_category: UmaaQosProfileCategory = UmaaQosProfileCategory.REPORT) -> dds.DataWriter:
+    def get_writer(
+        self, topic_name: str, data_type, profile_category: UmaaQosProfileCategory = UmaaQosProfileCategory.REPORT
+    ) -> dds.DataWriter:
         profile = self.PROFILE_DICT[profile_category]
         topic = self.get_topic(topic_name, data_type)
         writer_qos = self.qos_provider.datawriter_qos_from_profile(profile)
         return dds.DataWriter(self.publisher, topic, qos=writer_qos)
 
-    def get_reader(self, topic_name: str, data_type, profile_category: UmaaQosProfileCategory = UmaaQosProfileCategory.REPORT) -> dds.DataReader:
+    def get_reader(
+        self, topic_name: str, data_type, profile_category: UmaaQosProfileCategory = UmaaQosProfileCategory.REPORT
+    ) -> dds.DataReader:
         profile = self.PROFILE_DICT[profile_category]
         topic = self.get_topic(topic_name, data_type)
         reader_qos = self.qos_provider.datareader_qos_from_profile(profile)
