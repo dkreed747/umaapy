@@ -29,7 +29,8 @@ package-dir = { "" = "src" }
 where = ["src"]
 
 [tool.setuptools.package-data]
-"my_package.types" = ["*.py"]
+"umaapy.resource" = ["*.xml"]
+
 
 [tool.black]
 line-length = 120

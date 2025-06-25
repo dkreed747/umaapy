@@ -5,6 +5,9 @@
   ],
   "service": "umaapy-dev",
   "workspaceFolder": "/workspace",
+  "features": {
+    "ghcr.io/devcontainers/features/git-credential-manager:1": {}
+  },
   "customizations": {
     "vscode": {
       "extensions": [
@@ -12,6 +15,7 @@
         "ms-python.python",
         "ms-python.vscode-pylance",
         "ms-python.isort",
+        "ms-python.black-formatter",
         // Others
         "GitLab.gitlab-workflow",
         "redhat.vscode-yaml",

@@ -9,7 +9,8 @@ services:
     environment:
       DISPLAY: host.docker.internal:0.0
     volumes:
-      - .:/workspace:cached
+      - umaapy-dev-vol:/workspace
+      - home-vol:/root
     working_dir: /workspace
     cap_add:
       - SYS_PTRACE
@@ -19,6 +20,14 @@ services:
     stdin_open: true
     networks:
       - net
+
+volumes:
+  umaapy-dev-vol:
+    name: umaapy-dev-vol
+    external: false
+  home-vol:
+    name: home-vol
+    external: false
 
 networks:
   net:
