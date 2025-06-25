@@ -55,7 +55,7 @@ test:
       artifacts: true
   before_script:
     - pip install --upgrade pip build setuptools-scm twine
-    - cp $RTI_LICENSE $NDDSHOME/$RTI_LICENSE
+    - cp $RTI_LICENSE $NDDSHOME/rti_license.dat
   script:
     - pip install dist/*.whl
     - pytest
