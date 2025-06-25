@@ -11,16 +11,23 @@ from umaapy.types import (
 
 
 class TestDDSConfiguratior:
-    def test_load_singleton(self):
+    def test_get_topic(self):
         qos_file = str(files("umaapy.resource") / "umaapy_qos_lib.xml")
         config_boy = DDSConfigurator(0, qos_file)
-        gpr = config_boy.get_reader(
+        topic = config_boy.get_topic(
             UMAA_SA_GlobalPoseStatus_GlobalPoseReportTypeTopic, UMAA_SA_GlobalPoseStatus_GlobalPoseReportType
         )
-        assert len(config_boy.topics) > 0
+
+        assert len(config_boy.topics) == 1
         # Calling again will already know the topic
         config_boy = DDSConfigurator(0, "/workspace/umaapy/src/umaapy/resource/umaapy_qos_lib.xml")
-        assert len(config_boy.topics) > 0
+        assert len(config_boy.topics) == 1
+
+        # Calling topic again will not make new topic and use cache instead
+        topic = config_boy.get_topic(
+            UMAA_SA_GlobalPoseStatus_GlobalPoseReportTypeTopic, UMAA_SA_GlobalPoseStatus_GlobalPoseReportType
+        )
+        assert len(config_boy.topics) == 1
 
     def test_load_reader_writer(self):
         qos_file = str(files("umaapy.resource") / "umaapy_qos_lib.xml")
