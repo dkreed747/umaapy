@@ -9,6 +9,18 @@ class UmaaQosProfileCategory(Enum):
     REPORT = 2
 
 
+class WriterListenerEventType(Enum):
+    ON_OFFERED_DEADLINE_MISSED = 0
+    ON_OFFERED_INCOMPATIBLE_QOS = 1
+    ON_PUBLICATION_MATCHED = 2
+    ON_INSTANCE_REPLACED = 3
+    ON_APPLICATION_ACKNOWLEDGMENT = 4
+    ON_RELIABLE_READER_ACTIVITY_CHANGED = 5
+    ON_RELIABLE_WRITER_CACHE_CHANGED = 6
+    ON_SERVICE_REQUEST_ACCEPTED = 7
+    ON_LIVELINESS_LOST = 8
+
+
 class DDSConfigurator:
     PROFILE_DICT = {
         UmaaQosProfileCategory.COMMAND: "UMAAPyQosLib::Command",
@@ -49,7 +61,7 @@ class DDSConfigurator:
     ) -> dds.DataWriter:
         profile = self.PROFILE_DICT[profile_category]
         topic = self.get_topic(topic_name, data_type)
-        writer_qos = self.qos_provider.datawriter_qos_from_profile(profile)
+        writer_qos: dds.DataWriterQos = self.qos_provider.datawriter_qos_from_profile(profile)
         return dds.DataWriter(self.publisher, topic, qos=writer_qos)
 
     def get_reader(
@@ -57,5 +69,5 @@ class DDSConfigurator:
     ) -> dds.DataReader:
         profile = self.PROFILE_DICT[profile_category]
         topic = self.get_topic(topic_name, data_type)
-        reader_qos = self.qos_provider.datareader_qos_from_profile(profile)
+        reader_qos: dds.DataReaderQos = self.qos_provider.datareader_qos_from_profile(profile)
         return dds.DataReader(self.subscriber, topic, qos=reader_qos)

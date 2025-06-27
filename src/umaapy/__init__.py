@@ -1,4 +1,7 @@
-import logging, sys
+import os, logging, sys
+
+from umaapy.util.dds_configurator import DDSConfigurator
+from umaapy.util.event_processor import EventProcessor
 
 
 def setup_logging(level="INFO", log_file=None):
@@ -20,3 +23,9 @@ def setup_logging(level="INFO", log_file=None):
 
 
 setup_logging(level="DEBUG")
+
+DOMAIN_ID = int(os.getenv("DOMAIN_ID", "0"))
+QOS_FILE = os.getenv("QOS_FILE", "/workspace/umaapy/src/umaapy/resource/umaapy_qos_lib.xml")
+
+configurator = DDSConfigurator(DOMAIN_ID, QOS_FILE)
+event_processor = EventProcessor()
