@@ -70,7 +70,7 @@ class EventProcessor:
         self._start_stop_lock = threading.Lock()
 
         # Configuration
-        self.initial_workers = int(os.getenv("THREAD_POOL_SIZE", str(os.cpu_count() or 1)))
+        self.initial_workers = int(os.getenv("THREAD_POOL_SIZE", str(4)))
         self.min_workers = self.initial_workers
         self.max_workers = int(os.getenv("MAX_THREADS", str(self.min_workers * 2)))
         self.scheduler_resolution = float(os.getenv("SCHEDULER_RESOLUTION_MS", "1")) / 1000.0
