@@ -21,6 +21,16 @@ class WriterListenerEventType(Enum):
     ON_LIVELINESS_LOST = 8
 
 
+class ReaderListenerEventType(Enum):
+    ON_DATA_AVAILABLE = 0
+    ON_LIVELINESS_CHANGED = 1
+    ON_REQUESTED_DEADLINE_MISSED = 2
+    ON_REQUESTED_INCOMPATIBLE_QOS = 3
+    ON_SAMPLE_LOST = 4
+    ON_SAMPLE_REJECTED = 5
+    ON_SUBSCRIPTION_MATCHED = 6
+
+
 class DDSConfigurator:
     PROFILE_DICT = {
         UmaaQosProfileCategory.COMMAND: "UMAAPyQosLib::Command",
@@ -51,23 +61,23 @@ class DDSConfigurator:
         self.subscriber = dds.Subscriber(self.participant)
         self.topics = {}
 
-    def get_topic(self, name: str, data_type):
+    def get_topic(self, data_type, name: str):
         if name not in self.topics:
             self.topics[name] = dds.Topic(self.participant, name, data_type)
         return self.topics[name]
 
     def get_writer(
-        self, topic_name: str, data_type, profile_category: UmaaQosProfileCategory = UmaaQosProfileCategory.REPORT
+        self, data_type, topic_name: str, profile_category: UmaaQosProfileCategory = UmaaQosProfileCategory.REPORT
     ) -> dds.DataWriter:
         profile = self.PROFILE_DICT[profile_category]
-        topic = self.get_topic(topic_name, data_type)
+        topic = self.get_topic(data_type, topic_name)
         writer_qos: dds.DataWriterQos = self.qos_provider.datawriter_qos_from_profile(profile)
         return dds.DataWriter(self.publisher, topic, qos=writer_qos)
 
     def get_reader(
-        self, topic_name: str, data_type, profile_category: UmaaQosProfileCategory = UmaaQosProfileCategory.REPORT
+        self, data_type, topic_name: str, profile_category: UmaaQosProfileCategory = UmaaQosProfileCategory.REPORT
     ) -> dds.DataReader:
         profile = self.PROFILE_DICT[profile_category]
-        topic = self.get_topic(topic_name, data_type)
+        topic = self.get_topic(data_type, topic_name)
         reader_qos: dds.DataReaderQos = self.qos_provider.datareader_qos_from_profile(profile)
         return dds.DataReader(self.subscriber, topic, qos=reader_qos)
