@@ -65,43 +65,43 @@ class ReportProvider(dds.DataWriterListener):
         self._callbacks[event].remove(callback)
 
     def on_application_acknowledgment(self, writer: dds.DataWriter, ack_info: dds.AcknowledgmentInfo):
-        self._logger.trace("On application acknowledgement triggered")
+        self._logger.debug("On application acknowledgement triggered")
         self._dispatch(WriterListenerEventType.ON_APPLICATION_ACKNOWLEDGMENT, writer=writer, ack_info=ack_info)
 
     def on_instance_replaced(self, writer: dds.DataWriter, instance: dds.InstanceHandle):
-        self._logger.trace("On instance replaced triggered")
+        self._logger.debug("On instance replaced triggered")
         self._dispatch(WriterListenerEventType.ON_INSTANCE_REPLACED, writer=writer, instance=instance)
 
     def on_liveliness_lost(self, writer: dds.DataWriter, status: dds.LivelinessLostStatus):
-        self._logger.trace("On liveliness lost triggered")
+        self._logger.debug("On liveliness lost triggered")
         self._logger.debug(f"Liveliness count: {status.current_count}")
         self._dispatch(WriterListenerEventType.ON_LIVELINESS_LOST, writer=writer, status=status)
 
     def on_offered_deadline_missed(self, writer: dds.DataWriter, status: dds.OfferedDeadlineMissedStatus):
-        self._logger.trace("On offered deadline missed triggered")
+        self._logger.debug("On offered deadline missed triggered")
         self._dispatch(WriterListenerEventType.ON_OFFERED_DEADLINE_MISSED, writer=writer, status=status)
 
     def on_offered_incompatible_qos(self, writer: dds.DataWriter, status: dds.OfferedIncompatibleQosStatus):
-        self._logger.trace("On offered incompatible qos triggered")
+        self._logger.debug("On offered incompatible qos triggered")
         self._dispatch(WriterListenerEventType.ON_OFFERED_INCOMPATIBLE_QOS, writer=writer, status=status)
 
     def on_publication_matched(self, writer: dds.DataWriter, status: dds.PublicationMatchedStatus):
-        self._logger.trace("On publication matched triggered")
+        self._logger.debug("On publication matched triggered")
         self._logger.debug(f"Publication subscriber count: {status.current_count}")
         self._dispatch(WriterListenerEventType.ON_PUBLICATION_MATCHED, writer=writer, status=status)
 
     def on_reliable_reader_activity_changed(
         self, writer: dds.DataWriter, status: dds.ReliableReaderActivityChangedStatus
     ):
-        self._logger.trace("On reliable reader activity changed triggered")
+        self._logger.debug("On reliable reader activity changed triggered")
         self._dispatch(WriterListenerEventType.ON_RELIABLE_READER_ACTIVITY_CHANGED, writer=writer, status=status)
 
     def on_reliable_writer_cache_changed(self, writer: dds.DataWriter, status: dds.ReliableWriterCacheChangedStatus):
-        self._logger.trace("On reliable writer cache changed triggered")
+        self._logger.debug("On reliable writer cache changed triggered")
         self._dispatch(WriterListenerEventType.ON_RELIABLE_WRITER_CACHE_CHANGED, writer=writer, status=status)
 
     def on_service_request_accepted(self, writer: dds.DataWriter, status: dds.ServiceRequestAcceptedStatus):
-        self._logger.trace("On service request accepted triggered")
+        self._logger.debug("On service request accepted triggered")
         self._dispatch(WriterListenerEventType.ON_SERVICE_REQUEST_ACCEPTED, writer=writer, status=status)
 
     def _dispatch(self, event: WriterListenerEventType, *args, **kwargs) -> None:

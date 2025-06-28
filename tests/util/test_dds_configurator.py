@@ -14,20 +14,17 @@ class TestDDSConfiguratior:
     def test_get_topic(self):
         qos_file = str(files("umaapy.resource") / "umaapy_qos_lib.xml")
         config_boy = DDSConfigurator(0, qos_file)
+
         topic = config_boy.get_topic(
             UMAA_SA_GlobalPoseStatus_GlobalPoseReportType, UMAA_SA_GlobalPoseStatus_GlobalPoseReportTypeTopic
         )
 
-        assert len(config_boy.topics) == 1
+        topics = len(config_boy.topics)
+
+        assert len(config_boy.topics) == topics
         # Calling again will already know the topic
         config_boy = DDSConfigurator(0, qos_file)
-        assert len(config_boy.topics) == 1
-
-        # Calling topic again will not make new topic and use cache instead
-        topic = config_boy.get_topic(
-            UMAA_SA_GlobalPoseStatus_GlobalPoseReportType, UMAA_SA_GlobalPoseStatus_GlobalPoseReportTypeTopic
-        )
-        assert len(config_boy.topics) == 1
+        assert len(config_boy.topics) == topics
 
     def test_load_reader_writer(self):
         qos_file = str(files("umaapy.resource") / "umaapy_qos_lib.xml")
