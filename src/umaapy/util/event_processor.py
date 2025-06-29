@@ -226,8 +226,9 @@ class EventProcessor:
             if task.future.cancelled() or task.task_id in self._cancelled:
                 continue
             try:
-                result = task.fn.execute() if isinstance(task.fn, Command) else task.fn()
-                task.future.set_result(result)
+                if task.future.set_running_or_notify_cancel():
+                    result = task.fn.execute() if isinstance(task.fn, Command) else task.fn()
+                    task.future.set_result(result)
             except Exception:
                 self.logger.exception(f"Error in task {task.task_id}")
                 task.future.set_exception(Exception)

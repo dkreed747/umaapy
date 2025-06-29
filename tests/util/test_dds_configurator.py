@@ -10,31 +10,43 @@ from umaapy.types import (
 )
 
 
-class TestDDSConfiguratior:
-    def test_get_topic(self):
-        qos_file = str(files("umaapy.resource") / "umaapy_qos_lib.xml")
-        config_boy = DDSConfigurator(0, qos_file)
+def test_get_topic():
+    qos_file = str(files("umaapy.resource") / "umaapy_qos_lib.xml")
+    config_boy = DDSConfigurator(0, qos_file)
 
-        topic = config_boy.get_topic(
-            UMAA_SA_GlobalPoseStatus_GlobalPoseReportType, UMAA_SA_GlobalPoseStatus_GlobalPoseReportTypeTopic
-        )
+    topic = config_boy.get_topic(UMAA_SA_GlobalPoseStatus_GlobalPoseReportType)
 
-        topics = len(config_boy.topics)
+    topics = len(config_boy.topics)
 
-        assert len(config_boy.topics) == topics
-        # Calling again will already know the topic
-        config_boy = DDSConfigurator(0, qos_file)
-        assert len(config_boy.topics) == topics
+    assert len(config_boy.topics) == topics
+    # Calling again will already know the topic
+    config_boy = DDSConfigurator(0, qos_file)
+    assert len(config_boy.topics) == topics
 
-    def test_load_reader_writer(self):
-        qos_file = str(files("umaapy.resource") / "umaapy_qos_lib.xml")
-        config_boy = DDSConfigurator(0, qos_file)
-        gpr_reader = config_boy.get_reader(
-            UMAA_SA_GlobalPoseStatus_GlobalPoseReportType, UMAA_SA_GlobalPoseStatus_GlobalPoseReportTypeTopic
-        )
-        gpr_writer = config_boy.get_writer(
-            UMAA_SA_GlobalPoseStatus_GlobalPoseReportType, UMAA_SA_GlobalPoseStatus_GlobalPoseReportTypeTopic
-        )
-        gpr_writer.write(UMAA_SA_GlobalPoseStatus_GlobalPoseReportType())
-        sleep(1)
-        assert len(gpr_reader.read()) > 0
+
+def test_load_reader_writer():
+    qos_file = str(files("umaapy.resource") / "umaapy_qos_lib.xml")
+    config_boy = DDSConfigurator(0, qos_file)
+    gpr_reader = config_boy.get_reader(UMAA_SA_GlobalPoseStatus_GlobalPoseReportType)
+    gpr_writer = config_boy.get_writer(UMAA_SA_GlobalPoseStatus_GlobalPoseReportType)
+    gpr_writer.write(UMAA_SA_GlobalPoseStatus_GlobalPoseReportType())
+    sleep(1)
+    assert len(gpr_reader.read()) > 0
+
+
+def test_filtered_reader():
+    qos_file = str(files("umaapy.resource") / "umaapy_qos_lib.xml")
+    config_boy = DDSConfigurator(0, qos_file)
+    gpr_filtered_reader = config_boy.get_filtered_reader(
+        UMAA_SA_GlobalPoseStatus_GlobalPoseReportType, "depth = %0", ["42.0"]
+    )
+    gpr_writer = config_boy.get_writer(UMAA_SA_GlobalPoseStatus_GlobalPoseReportType)
+
+    test_report = UMAA_SA_GlobalPoseStatus_GlobalPoseReportType()
+    gpr_writer.write(test_report)
+    sleep(1)
+    assert len(gpr_filtered_reader.take_data()) == 0
+    test_report.depth = 42.0
+    gpr_writer.write(test_report)
+    sleep(1)
+    assert len(gpr_filtered_reader.take_data()) > 0

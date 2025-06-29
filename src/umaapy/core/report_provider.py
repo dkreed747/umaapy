@@ -7,14 +7,17 @@ from umaapy.util.event_processor import EventProcessor, Command
 from umaapy.util.dds_configurator import UmaaQosProfileCategory, WriterListenerEventType
 from umaapy import event_processor, configurator
 from umaapy.util.timestamp import Timestamp
+from umaapy.util.umaa_utils import validate_report
 
 from umaapy.types import UMAA_Common_IdentifierType
 
 
 class ReportProvider(dds.DataWriterListener):
-    def __init__(self, source: UMAA_Common_IdentifierType, data_type: Any, topic: str):
+    def __init__(self, source: UMAA_Common_IdentifierType, data_type: Type, topic: str):
         super().__init__()
-        self._data_type = data_type
+        if not validate_report(data_type()):
+            raise RuntimeError(f"'{data_type.__name__.split("_")[-1]}' is not a valid UMAA report.")
+        self._data_type: Type = data_type
         self._source_id: UMAA_Common_IdentifierType = source
         self._topic: str = topic
         self._pool: EventProcessor = event_processor
@@ -31,12 +34,6 @@ class ReportProvider(dds.DataWriterListener):
         self._writer.set_listener(self, dds.StatusMask.ALL)
 
     def publish(self, sample: Any) -> None:
-        if not hasattr(sample, "source") or not hasattr(sample, "timeStamp"):
-            self._logger.warning(
-                f"{type(sample).__name__} does not have required report fields 'source' or 'timeStamp'."
-            )
-            return
-
         sample.source = self._source_id
         sample.timeStamp = Timestamp.now().to_umaa()
         self._logger.debug("Writing sample")
@@ -44,10 +41,6 @@ class ReportProvider(dds.DataWriterListener):
 
     def dispose(self) -> None:
         key_holder = self._data_type()
-        if not hasattr(key_holder, "source"):
-            self._logger.warning(f'{self._data_type.__name__} does not have required key field "source"')
-            return
-
         key_holder.source = self._source_id
         ih = self._writer.lookup_instance(key_holder)
         if ih != dds.InstanceHandle.nil:
