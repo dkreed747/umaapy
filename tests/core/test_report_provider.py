@@ -57,7 +57,7 @@ def test_47_send_report():
     sleep(0.5)
 
     test_reader = configurator.get_reader(
-        UMAA_SA_GlobalPoseStatus_GlobalPoseReportTypeTopic, UMAA_SA_GlobalPoseStatus_GlobalPoseReportType
+        UMAA_SA_GlobalPoseStatus_GlobalPoseReportType, UMAA_SA_GlobalPoseStatus_GlobalPoseReportTypeTopic
     )
 
     send_sample = UMAA_SA_GlobalPoseStatus_GlobalPoseReportType()

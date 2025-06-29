@@ -1,15 +1,22 @@
+from typing import Type, Optional, List
 from enum import Enum
 import threading
 import rti.connextdds as dds
 
+from umaapy.util.umaa_utils import topic_from_type
+
 
 class UmaaQosProfileCategory(Enum):
+    """UMAA QoS profile type enum"""
+
     COMMAND = 0
     CONFIG = 1
     REPORT = 2
 
 
 class WriterListenerEventType(Enum):
+    """Internal enum matching the DDS writer listener callbacks"""
+
     ON_OFFERED_DEADLINE_MISSED = 0
     ON_OFFERED_INCOMPATIBLE_QOS = 1
     ON_PUBLICATION_MATCHED = 2
@@ -21,7 +28,21 @@ class WriterListenerEventType(Enum):
     ON_LIVELINESS_LOST = 8
 
 
+class ReaderListenerEventType(Enum):
+    """Internal enum matching the DDS reader listener callbacks"""
+
+    ON_DATA_AVAILABLE = 0
+    ON_LIVELINESS_CHANGED = 1
+    ON_REQUESTED_DEADLINE_MISSED = 2
+    ON_REQUESTED_INCOMPATIBLE_QOS = 3
+    ON_SAMPLE_LOST = 4
+    ON_SAMPLE_REJECTED = 5
+    ON_SUBSCRIPTION_MATCHED = 6
+
+
 class DDSConfigurator:
+    """DDS Utility Class that handles QoS, reader, writer, and topic management"""
+
     PROFILE_DICT = {
         UmaaQosProfileCategory.COMMAND: "UMAAPyQosLib::Command",
         UmaaQosProfileCategory.CONFIG: "UMAAPyQosLib::Config",
@@ -51,23 +72,46 @@ class DDSConfigurator:
         self.subscriber = dds.Subscriber(self.participant)
         self.topics = {}
 
-    def get_topic(self, name: str, data_type):
+    def get_topic(self, data_type: Type, name: str = None):
+        name = topic_from_type(data_type) if name is None else name
         if name not in self.topics:
             self.topics[name] = dds.Topic(self.participant, name, data_type)
         return self.topics[name]
 
     def get_writer(
-        self, topic_name: str, data_type, profile_category: UmaaQosProfileCategory = UmaaQosProfileCategory.REPORT
+        self,
+        data_type: Type,
+        topic_name: str = None,
+        profile_category: UmaaQosProfileCategory = UmaaQosProfileCategory.REPORT,
     ) -> dds.DataWriter:
         profile = self.PROFILE_DICT[profile_category]
-        topic = self.get_topic(topic_name, data_type)
+        topic = self.get_topic(data_type, topic_name)
         writer_qos: dds.DataWriterQos = self.qos_provider.datawriter_qos_from_profile(profile)
         return dds.DataWriter(self.publisher, topic, qos=writer_qos)
 
     def get_reader(
-        self, topic_name: str, data_type, profile_category: UmaaQosProfileCategory = UmaaQosProfileCategory.REPORT
+        self,
+        data_type: Type,
+        topic_name: str = None,
+        profile_category: UmaaQosProfileCategory = UmaaQosProfileCategory.REPORT,
     ) -> dds.DataReader:
         profile = self.PROFILE_DICT[profile_category]
-        topic = self.get_topic(topic_name, data_type)
+        topic = self.get_topic(data_type, topic_name)
         reader_qos: dds.DataReaderQos = self.qos_provider.datareader_qos_from_profile(profile)
         return dds.DataReader(self.subscriber, topic, qos=reader_qos)
+
+    def get_filtered_reader(
+        self,
+        data_type: Type,
+        filter_expression: str,
+        filter_parameters: Optional[List[str]] = None,
+        topic_name: str = None,
+        profile_category: UmaaQosProfileCategory = UmaaQosProfileCategory.REPORT,
+    ) -> dds.DataReader:
+        profile = self.PROFILE_DICT[profile_category]
+        topic = self.get_topic(data_type, topic_name)
+        reader_qos: dds.DataReaderQos = self.qos_provider.datareader_qos_from_profile(profile)
+        cft = dds.ContentFilteredTopic(
+            topic, f"{topic.name}Filtered", dds.Filter(filter_expression, parameters=filter_parameters or [])
+        )
+        return dds.DataReader(self.subscriber, cft, qos=reader_qos)

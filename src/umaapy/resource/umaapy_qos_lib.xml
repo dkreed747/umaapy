@@ -46,6 +46,11 @@
                     <kind>ASYNCHRONOUS_PUBLISH_MODE_QOS</kind>
                 </publish_mode>
 
+                <history>
+                    <kind>KEEP_LAST_HISTORY_QOS</kind>
+                    <depth>5</depth>
+                </history>
+
                 <liveliness>
                     <lease_duration>
                         <sec>5</sec>
@@ -68,6 +73,11 @@
                         <nanosec>0</nanosec>
                     </lease_duration>
                 </liveliness>
+
+                <history>
+                    <kind>KEEP_LAST_HISTORY_QOS</kind>
+                    <depth>5</depth>
+                </history>
 
                 <reader_data_lifecycle>
                     <autopurge_disposed_instances_delay>

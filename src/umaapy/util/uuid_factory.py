@@ -7,6 +7,10 @@ from umaapy.types import UMAA_Common_IdentifierType, UMAA_Common_Measurement_Num
 NIL_GUID = UMAA_Common_Measurement_NumericGUID(dds.Uint8Seq([0 for _ in range(16)]))
 
 
+def guid_to_hex(guid: UMAA_Common_Measurement_NumericGUID) -> str:
+    return " ".join(f"{b:02x}" for b in guid.value).lower().strip()
+
+
 def generate_guid() -> UMAA_Common_Measurement_NumericGUID:
     return UMAA_Common_Measurement_NumericGUID(dds.Uint8Seq(uuid.uuid4().bytes))
 
