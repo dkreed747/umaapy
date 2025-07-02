@@ -2,7 +2,7 @@ import uuid
 from typing import List
 
 import rti.connextdds as dds
-from umaapy.types import UMAA_Common_IdentifierType, UMAA_Common_Measurement_NumericGUID
+from umaapy.umaa_types import UMAA_Common_IdentifierType, UMAA_Common_Measurement_NumericGUID
 
 NIL_GUID = UMAA_Common_Measurement_NumericGUID(dds.Uint8Seq([0 for _ in range(16)]))
 

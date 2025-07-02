@@ -39,7 +39,7 @@ umaapy:
       artifacts: false
   before_script:
     - pip install --upgrade pip build setuptools-scm twine
-    - rtiddsgen -language Python -inputIdl idls/UMAA -r -I idls -joinInputFiles -joinedFilesOutputName types -d ./src/umaapy
+    - rtiddsgen -language Python -inputIdl idls/UMAA -r -I idls -joinInputFiles -joinedFilesOutputName umaa_types -d ./src/umaapy
   script:
     - python -m build
   artifacts:

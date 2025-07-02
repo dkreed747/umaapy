@@ -13,6 +13,10 @@ authors = [
     { name = "Devon Reed", email = "clr5436@psu.edu" }
 ]
 
+dependencies = [
+  "rti.connext>=7.5.0"
+]
+
 classifiers = [
     "Programming Language :: Python :: 3",
     "License :: OSI Approved :: MIT License",

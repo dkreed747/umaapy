@@ -11,7 +11,7 @@ from umaapy import event_processor, configurator
 from umaapy.util.umaa_utils import validate_command
 from umaapy.util.uuid_factory import guid_to_hex
 
-from umaapy.types import (
+from umaapy.umaa_types import (
     UMAA_Common_IdentifierType,
 )
 
