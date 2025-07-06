@@ -15,7 +15,7 @@ from umaapy.examples.global_vector_control import (
     _global_vector_control_command_factory,
 )
 
-from umaapy.types import (
+from umaapy.umaa_types import (
     UMAA_Common_IdentifierType,
     UMAA_MO_GlobalVectorControl_GlobalVectorCommandType,
     UMAA_MO_GlobalVectorControl_GlobalVectorCommandTypeTopic,

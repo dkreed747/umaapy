@@ -3,7 +3,7 @@ import time
 from functools import total_ordering
 from typing import Union
 
-from umaapy.types import UMAA_Common_Measurement_DateTime
+from umaapy.umaa_types import UMAA_Common_Measurement_DateTime
 
 
 @total_ordering

@@ -9,7 +9,7 @@ from umaapy import configurator
 from umaapy.util.timestamp import Timestamp
 from umaapy.util.event_processor import Command
 
-from umaapy.types import (
+from umaapy.umaa_types import (
     UMAA_Common_IdentifierType,
     UMAA_Common_MaritimeEnumeration_CommandStatusEnumModule_CommandStatusEnumType as CmdStatus,
     UMAA_Common_MaritimeEnumeration_CommandStatusReasonEnumModule_CommandStatusReasonEnumType as CmdReason,

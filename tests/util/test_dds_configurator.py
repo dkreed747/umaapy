@@ -4,7 +4,7 @@ from umaapy.util.dds_configurator import DDSConfigurator
 from importlib.resources import files
 
 
-from umaapy.types import (
+from umaapy.umaa_types import (
     UMAA_SA_GlobalPoseStatus_GlobalPoseReportType,
     UMAA_SA_GlobalPoseStatus_GlobalPoseReportTypeTopic,
 )

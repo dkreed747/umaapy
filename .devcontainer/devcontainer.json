@@ -5,9 +5,6 @@
   ],
   "service": "umaapy-dev",
   "workspaceFolder": "/workspace",
-  "features": {
-    "ghcr.io/devcontainers/features/git-credential-manager:1": {}
-  },
   "customizations": {
     "vscode": {
       "extensions": [

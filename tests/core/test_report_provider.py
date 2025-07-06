@@ -10,7 +10,7 @@ from umaapy.util.event_processor import Command
 from umaapy.util.uuid_factory import *
 from umaapy.util.timestamp import Timestamp
 
-from umaapy.types import (
+from umaapy.umaa_types import (
     UMAA_Common_IdentifierType,
     UMAA_SA_GlobalPoseStatus_GlobalPoseReportType,
     UMAA_SA_GlobalPoseStatus_GlobalPoseReportTypeTopic,

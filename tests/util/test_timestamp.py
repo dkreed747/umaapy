@@ -1,7 +1,7 @@
 import time
 import pytest
 from umaapy.util.timestamp import Timestamp
-from umaapy.types import UMAA_Common_Measurement_DateTime
+from umaapy.umaa_types import UMAA_Common_Measurement_DateTime
 
 
 def test_now():

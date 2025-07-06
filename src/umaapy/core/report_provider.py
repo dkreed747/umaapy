@@ -9,7 +9,7 @@ from umaapy import event_processor, configurator
 from umaapy.util.timestamp import Timestamp
 from umaapy.util.umaa_utils import validate_report
 
-from umaapy.types import UMAA_Common_IdentifierType
+from umaapy.umaa_types import UMAA_Common_IdentifierType
 
 
 class ReportProvider(dds.DataWriterListener):

@@ -5,19 +5,6 @@
 
         <qos_profile name="ParticipantProfile">
             <domain_participant_qos>
-                <property>
-                    <value>
-                        <element>
-                            <name>rti.monitor.library</name>
-                            <value>rtimonitoring</value>
-                        </element>
-                        <element>
-                            <name>rti.monitor.create_function</name>
-                            <value>RTIDefaultMonitor_create</value>
-                        </element>
-                    </value>
-                </property>
-
                 <resource_limits>
                     <type_object_max_serialized_length>25000</type_object_max_serialized_length>
                     <contentfilter_property_max_length>512</contentfilter_property_max_length>

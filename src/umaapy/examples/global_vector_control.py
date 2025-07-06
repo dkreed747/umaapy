@@ -6,7 +6,7 @@ from umaapy.core.command_provider import CommandProvider
 from umaapy.util.umaa_command import UmaaCommand, UmaaCommandFactory
 from umaapy.util.uuid_factory import build_identifier_type, guid_to_hex
 
-from umaapy.types import (
+from umaapy.umaa_types import (
     UMAA_Common_IdentifierType,
     UMAA_MO_GlobalVectorControl_GlobalVectorCommandType,
     UMAA_MO_GlobalVectorControl_GlobalVectorCommandTypeTopic,
