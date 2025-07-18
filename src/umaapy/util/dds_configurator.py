@@ -5,6 +5,8 @@ import rti.connextdds as dds
 
 from umaapy.util.umaa_utils import topic_from_type
 
+dds.Logger.instance.verbosity_by_category(dds.LogCategory.all_categories, dds.Verbosity.STATUS_ALL)
+
 
 class UmaaQosProfileCategory(Enum):
     """UMAA QoS profile type enum"""
