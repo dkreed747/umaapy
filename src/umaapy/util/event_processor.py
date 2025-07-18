@@ -287,3 +287,22 @@ class EventProcessor:
                         heapq.heappush(self._task_queue, exit_t)
                         self._queue_cond.notify()
                 self._workers = [w for w in self._workers if w.is_alive()]
+
+    @classmethod
+    def reset(cls):
+        """
+        Tear down the current EventProcessor singleton so that the next
+        EventProcessor() you call will create a fresh instance.
+        """
+        with cls._instance_lock:
+            inst = cls._instance
+            if not inst:
+                return
+            try:
+                inst.stop(wait=True)
+            except Exception as e:
+                inst.logger.warning("EventProcessor.reset: error stopping processor: %s", e)
+            finally:
+                if hasattr(inst, "_initialized"):
+                    delattr(inst, "_initialized")
+                cls._instance = None

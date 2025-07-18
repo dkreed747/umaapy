@@ -4,7 +4,7 @@ import rti.connextdds as dds
 
 from umaapy.util.event_processor import EventProcessor, Command, MEDIUM
 from umaapy.util.dds_configurator import ReaderListenerEventType
-from umaapy import event_processor, configurator
+from umaapy import get_event_processor, get_configurator
 from umaapy.util.umaa_utils import validate_report
 from umaapy.util.uuid_factory import guid_to_hex
 
@@ -25,10 +25,8 @@ class ReportConsumer(dds.DataReaderListener):
                 for source in sources
             ]
         )
-        self._reader: dds.DataReader = configurator.get_filtered_reader(report_type, filter_expression)
+        self._reader: dds.DataReader = get_configurator().get_filtered_reader(report_type, filter_expression)
         self._latest_report: Optional[Any] = None
-
-        self._pool: EventProcessor = event_processor
 
         self._report_callbacks: List[Union[Callable[[Optional[Any]], None], Command]] = []
 
@@ -102,8 +100,8 @@ class ReportConsumer(dds.DataReaderListener):
 
     def _dispatch_report(self, report: Optional[Any]) -> None:
         for cb in self._report_callbacks:
-            self._pool.submit(cb, report, priority=self._report_priority)
+            get_event_processor().submit(cb, report, priority=self._report_priority)
 
     def _dispatch_event(self, event: ReaderListenerEventType, *args, **kwargs) -> None:
         for cb in self._callbacks[event]:
-            self._pool.submit(cb, *args, priority=self._report_priority, **kwargs)
+            get_event_processor().submit(cb, *args, priority=self._report_priority, **kwargs)

@@ -5,6 +5,8 @@ import rti.connextdds as dds
 
 from umaapy.util.umaa_utils import topic_from_type
 
+# dds.Logger.instance.verbosity_by_category(dds.LogCategory.all_categories, dds.Verbosity.STATUS_ALL)
+
 
 class UmaaQosProfileCategory(Enum):
     """UMAA QoS profile type enum"""
@@ -62,7 +64,8 @@ class DDSConfigurator:
         if getattr(self, "_initialized", False):
             return
         self._initialized = True
-
+        self._domain_id = domain_id
+        self._qos_file = qos_file
         self.qos_provider = dds.QosProvider(qos_file)
         self.participant = dds.DomainParticipant(
             domain_id, qos=self.qos_provider.participant_qos_from_profile("UMAAPyQosLib::ParticipantProfile")
@@ -117,3 +120,16 @@ class DDSConfigurator:
                 topic, f"{topic.name}Filtered", dds.Filter(filter_expression, parameters=filter_parameters or [])
             )
         return dds.DataReader(self.subscriber, cft, qos=reader_qos)
+
+    @classmethod
+    def reset(cls):
+        with cls._instance_lock:
+            inst = cls._instance
+            if not inst:
+                return
+
+            inst.participant.close_contained_entities()
+            inst.participant.close()
+            if hasattr(inst, "_initialized"):
+                delattr(inst, "_initialized")
+            inst.__init__(inst._domain_id, inst._qos_file)

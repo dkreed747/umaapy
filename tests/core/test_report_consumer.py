@@ -4,7 +4,7 @@ from time import sleep
 import logging
 import rti.connextdds as dds
 
-from umaapy import configurator
+from umaapy import get_configurator, reset_dds_participant
 from umaapy.core.report_consumer import ReportConsumer, ReaderListenerEventType
 from umaapy.util.event_processor import Command, HIGH
 from umaapy.util.uuid_factory import *
@@ -14,6 +14,7 @@ from umaapy.umaa_types import UMAA_SA_GlobalPoseStatus_GlobalPoseReportType as G
 
 
 def test_55_consumer_reads_filtered_reports_only():
+    reset_dds_participant()
     test_report_source_id = build_identifier_type(
         "336062c9-54da-424f-9c67-2dd83c4e3e28", "4d388a62-91d0-4ceb-a386-c142178c97db"
     )
@@ -40,7 +41,7 @@ def test_55_consumer_reads_filtered_reports_only():
     global_pose_status_consumer = ReportConsumer([test_report_source_id], GlobalPoseReportType, HIGH)
     global_pose_status_consumer.add_report_callback(on_new_report)
 
-    pose_writer = configurator.get_writer(GlobalPoseReportType)
+    pose_writer = get_configurator().get_writer(GlobalPoseReportType)
     sleep(1)
 
     pose_writer.write(good_report)
@@ -56,6 +57,7 @@ def test_55_consumer_reads_filtered_reports_only():
 
 
 def test_56_user_registers_report_callback():
+    reset_dds_participant()
     test_report_source_id = build_identifier_type(
         "ad44c213-077d-47b6-9dd7-8c7a631bc3fe", "ed66f244-e680-47c6-88d1-13bb9252ec6c"
     )
@@ -74,7 +76,7 @@ def test_56_user_registers_report_callback():
     global_pose_status_consumer = ReportConsumer([test_report_source_id], GlobalPoseReportType, HIGH)
     global_pose_status_consumer.add_report_callback(on_new_report)
 
-    pose_writer = configurator.get_writer(GlobalPoseReportType)
+    pose_writer = get_configurator().get_writer(GlobalPoseReportType)
     sleep(1)
 
     pose_writer.write(report)
@@ -86,6 +88,7 @@ def test_56_user_registers_report_callback():
 
 
 def test_57_user_registers_event_callback():
+    reset_dds_participant()
     test_report_source_id = build_identifier_type(
         "f511c492-b143-442f-9a06-e245d1598173", "4119a344-c207-4221-a93a-b19094bdb8f1"
     )
@@ -100,7 +103,7 @@ def test_57_user_registers_event_callback():
     global_pose_status_consumer = ReportConsumer([test_report_source_id], GlobalPoseReportType, HIGH)
     global_pose_status_consumer.add_event_callback(ReaderListenerEventType.ON_SUBSCRIPTION_MATCHED, on_sub_status)
 
-    pose_writer = configurator.get_writer(GlobalPoseReportType)
+    pose_writer = get_configurator().get_writer(GlobalPoseReportType)
     sleep(1)
     pose_writer.close()
     sleep(1)

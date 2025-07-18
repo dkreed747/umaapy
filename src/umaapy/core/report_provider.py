@@ -3,9 +3,9 @@ from uuid import UUID
 import logging
 import rti.connextdds as dds
 
-from umaapy.util.event_processor import EventProcessor, Command, MEDIUM
+from umaapy.util.event_processor import Command, MEDIUM
 from umaapy.util.dds_configurator import UmaaQosProfileCategory, WriterListenerEventType
-from umaapy import event_processor, configurator
+from umaapy import get_event_processor, get_configurator
 from umaapy.util.timestamp import Timestamp
 from umaapy.util.umaa_utils import validate_report
 
@@ -20,8 +20,7 @@ class ReportProvider(dds.DataWriterListener):
         self._source_id: UMAA_Common_IdentifierType = source
         self._data_type: Type = data_type
         self._report_priority = report_priority
-        self._pool: EventProcessor = event_processor
-        self._writer: dds.DataWriter = configurator.get_writer(
+        self._writer: dds.DataWriter = get_configurator().get_writer(
             self._data_type, profile_category=UmaaQosProfileCategory.REPORT
         )
         self._callbacks: Dict[WriterListenerEventType, List[Union[Callable[..., None], Command]]] = {
@@ -97,4 +96,4 @@ class ReportProvider(dds.DataWriterListener):
 
     def _dispatch(self, event: WriterListenerEventType, *args, **kwargs) -> None:
         for cb in self._callbacks[event]:
-            self._pool.submit(cb, *args, priority=self._report_priority, **kwargs)
+            get_event_processor().submit(cb, *args, priority=self._report_priority, **kwargs)

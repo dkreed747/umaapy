@@ -5,7 +5,7 @@ import rti.connextdds as dds
 
 from umaapy.util.umaa_utils import validate_command, validate_ack, validate_status, validate_execution_status
 from umaapy.util.dds_configurator import UmaaQosProfileCategory
-from umaapy import configurator
+from umaapy import get_configurator
 from umaapy.util.timestamp import Timestamp
 from umaapy.util.event_processor import Command
 
@@ -182,11 +182,8 @@ class UmaaCommandFactory:
     def __init__(
         self,
         ack_type: Type,
-        ack_type_topic,
         status_type: Type,
-        status_type_topic: str,
         execution_status_type: Optional[Type] = None,
-        execution_status_type_topic: Optional[str] = None,
     ):
         self.source_id = None
         self.logger = None
@@ -199,14 +196,14 @@ class UmaaCommandFactory:
                 f"'{execution_status_type.__name__.split("_")[-1]}' is not a valid UMAA execution status."
             )
 
-        self._ack_writer: dds.DataWriter = configurator.get_writer(
-            ack_type, ack_type_topic, UmaaQosProfileCategory.COMMAND
+        self._ack_writer: dds.DataWriter = get_configurator().get_writer(
+            ack_type, profile_category=UmaaQosProfileCategory.COMMAND
         )
-        self._status_writer: dds.DataWriter = configurator.get_writer(
-            status_type, status_type_topic, UmaaQosProfileCategory.COMMAND
+        self._status_writer: dds.DataWriter = get_configurator().get_writer(
+            status_type, profile_category=UmaaQosProfileCategory.COMMAND
         )
         self._execution_status_writer: dds.DataWriter = (
-            configurator.get_writer(execution_status_type, execution_status_type_topic, UmaaQosProfileCategory.COMMAND)
+            get_configurator().get_writer(execution_status_type, profile_category=UmaaQosProfileCategory.COMMAND)
             if execution_status_type is not None
             else None
         )

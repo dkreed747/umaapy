@@ -4,7 +4,7 @@ from time import sleep
 import logging
 import rti.connextdds as dds
 
-from umaapy import configurator
+from umaapy import get_configurator, reset_dds_participant
 from umaapy.core.report_provider import ReportProvider, WriterListenerEventType
 from umaapy.util.event_processor import Command
 from umaapy.util.uuid_factory import *
@@ -36,6 +36,7 @@ def test_46_provider_accepts_source_id():
 
 
 def test_47_send_report():
+    reset_dds_participant()
     source_id = build_identifier_type("cec418f0-32de-4aee-961d-9530e79869bd", "8ca7d105-5832-4a4b-bec2-a405ebd33e33")
 
     gpr = ReportProvider(
@@ -46,7 +47,7 @@ def test_47_send_report():
     now = Timestamp.now()
     sleep(0.5)
 
-    test_reader = configurator.get_reader(UMAA_SA_GlobalPoseStatus_GlobalPoseReportType)
+    test_reader = get_configurator().get_reader(UMAA_SA_GlobalPoseStatus_GlobalPoseReportType)
 
     send_sample = UMAA_SA_GlobalPoseStatus_GlobalPoseReportType()
     send_sample.position.geodeticLatitude = 47.654
