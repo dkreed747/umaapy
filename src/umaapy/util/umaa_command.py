@@ -89,7 +89,7 @@ class UmaaCommand(Command):
                     self._condition.wait()
 
     @override
-    def execute(self):
+    def execute(self, *args, **kwargs):
         try:
             self._send_ack()
             while True:

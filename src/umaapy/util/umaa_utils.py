@@ -1,7 +1,7 @@
 from typing import Any, Type
 import logging
 
-_logger = logging.getLogger(f"{__file__.split("/")[-1]}")
+_logger = logging.getLogger(__name__)
 
 
 def validate_command(command: Any) -> bool:

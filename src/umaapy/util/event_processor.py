@@ -15,7 +15,7 @@ class Command(ABC):
     """Base class for commands to be executed by the EventProcessor."""
 
     @abstractmethod
-    def execute(self) -> Any:
+    def execute(self, *args, **kwargs) -> Any:
         """Perform the command's action and return an optional result."""
         pass
 
@@ -35,6 +35,8 @@ class Task:
     task_id: str = field(compare=False)
     fn: Union[Callable[..., Any], Command] = field(compare=False)
     future: Future = field(compare=False)
+    args: tuple[Any, ...] = field(default_factory=tuple, compare=False)
+    kwargs: dict[str, Any] = field(default_factory=dict, compare=False)
 
 
 @dataclass(order=True)
@@ -45,6 +47,8 @@ class RecurringTask:
     sequence: int = field(compare=False)
     task_id: str = field(compare=False)
     fn: Union[Callable[..., Any], Command] = field(compare=False)
+    args: tuple[Any, ...] = field(default_factory=tuple, compare=False)
+    kwargs: dict[str, Any] = field(default_factory=dict, compare=False)
 
 
 class EventProcessor:
@@ -158,7 +162,9 @@ class EventProcessor:
         with self._rec_lock:
             return len(self._recurring_queue)
 
-    def submit(self, fn: Union[Callable[..., Any], Command], priority: int = MEDIUM) -> Future:
+    def submit(
+        self, fn: Union[Callable[..., Any], Command], *args: Any, priority: int = MEDIUM, **kwargs: Any
+    ) -> Future:
         """
         Submit a one-off task. Returns a Future.
         Must be running.
@@ -171,13 +177,20 @@ class EventProcessor:
         self._futures[task_id] = future
         with self._queue_cond:
             self._sequence += 1
-            task = Task(priority, self._sequence, time.monotonic(), task_id, fn, future)
+            task = Task(priority, self._sequence, time.monotonic(), task_id, fn, future, args, kwargs)
             heapq.heappush(self._task_queue, task)
             self._tasks[task_id] = "oneoff"
             self._queue_cond.notify()
         return future
 
-    def submit_recurring(self, fn: Union[Callable[..., Any], Command], interval_ms: int, priority: int = MEDIUM) -> str:
+    def submit_recurring(
+        self,
+        fn: Union[Callable[..., Any], Command],
+        interval_ms: int,
+        *args: Any,
+        priority: int = MEDIUM,
+        **kwargs: Any,
+    ) -> str:
         """
         Schedule a recurring task. Returns a task_id for cancellation.
         Must be running.
@@ -188,7 +201,7 @@ class EventProcessor:
         with self._rec_cond:
             self._sequence += 1
             next_run = time.monotonic() + interval_ms / 1000.0
-            rt = RecurringTask(next_run, interval_ms, priority, self._sequence, task_id, fn)
+            rt = RecurringTask(next_run, interval_ms, priority, self._sequence, task_id, fn, args, kwargs)
             heapq.heappush(self._recurring_queue, rt)
             self._tasks[task_id] = "recurring"
             self._rec_cond.notify()
@@ -227,7 +240,11 @@ class EventProcessor:
                 continue
             try:
                 if task.future.set_running_or_notify_cancel():
-                    result = task.fn.execute() if isinstance(task.fn, Command) else task.fn()
+                    result = (
+                        task.fn.execute(*task.args, **task.kwargs)
+                        if isinstance(task.fn, Command)
+                        else task.fn(*task.args, **task.kwargs)
+                    )
                     task.future.set_result(result)
             except Exception:
                 self.logger.exception(f"Error in task {task.task_id}")
@@ -244,7 +261,7 @@ class EventProcessor:
                         with self._queue_cond:
                             self._sequence += 1
                             future = Future()
-                            t = Task(rt.priority, self._sequence, now, rt.task_id, rt.fn, future)
+                            t = Task(rt.priority, self._sequence, now, rt.task_id, rt.fn, future, rt.args, rt.kwargs)
                             heapq.heappush(self._task_queue, t)
                             self._queue_cond.notify()
                         rt.next_run_time = now + rt.interval_ms / 1000.0

@@ -22,7 +22,6 @@ class CommandProvider(dds.DataReaderListener):
         source: UMAA_Common_IdentifierType,
         cmd_factory: UmaaCommandFactory,
         cmd_type: Type,
-        cmd_type_topic: str,
         cmd_priority: int = LOW,
     ):
         super().__init__()

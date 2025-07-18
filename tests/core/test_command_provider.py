@@ -26,7 +26,7 @@ from umaapy.umaa_types import (
     UMAA_Common_MaritimeEnumeration_CommandStatusEnumModule_CommandStatusEnumType as CmdStatus,
 )
 
-_logger = logging.getLogger(f"{__file__.split("/")[-1]}")
+_logger = logging.getLogger(__name__)
 
 
 class TestStatusListener(dds.DataReaderListener):
@@ -44,7 +44,6 @@ global_vector_control_service_provider = CommandProvider(
     _global_vector_control_source_id,
     _global_vector_control_command_factory,
     UMAA_MO_GlobalVectorControl_GlobalVectorCommandType,
-    UMAA_MO_GlobalVectorControl_GlobalVectorCommandTypeTopic,
 )
 
 

@@ -3,7 +3,7 @@ from uuid import UUID
 import logging
 import rti.connextdds as dds
 
-from umaapy.util.event_processor import EventProcessor, Command
+from umaapy.util.event_processor import EventProcessor, Command, MEDIUM
 from umaapy.util.dds_configurator import UmaaQosProfileCategory, WriterListenerEventType
 from umaapy import event_processor, configurator
 from umaapy.util.timestamp import Timestamp
@@ -13,16 +13,16 @@ from umaapy.umaa_types import UMAA_Common_IdentifierType
 
 
 class ReportProvider(dds.DataWriterListener):
-    def __init__(self, source: UMAA_Common_IdentifierType, data_type: Type, topic: str):
+    def __init__(self, source: UMAA_Common_IdentifierType, data_type: Type, report_priority: int = MEDIUM):
         super().__init__()
         if not validate_report(data_type()):
             raise RuntimeError(f"'{data_type.__name__.split("_")[-1]}' is not a valid UMAA report.")
-        self._data_type: Type = data_type
         self._source_id: UMAA_Common_IdentifierType = source
-        self._topic: str = topic
+        self._data_type: Type = data_type
+        self._report_priority = report_priority
         self._pool: EventProcessor = event_processor
         self._writer: dds.DataWriter = configurator.get_writer(
-            self._data_type, self._topic, UmaaQosProfileCategory.REPORT
+            self._data_type, profile_category=UmaaQosProfileCategory.REPORT
         )
         self._callbacks: Dict[WriterListenerEventType, List[Union[Callable[..., None], Command]]] = {
             evt: [] for evt in WriterListenerEventType
@@ -67,7 +67,6 @@ class ReportProvider(dds.DataWriterListener):
 
     def on_liveliness_lost(self, writer: dds.DataWriter, status: dds.LivelinessLostStatus):
         self._logger.debug("On liveliness lost triggered")
-        self._logger.debug(f"Liveliness count: {status.current_count}")
         self._dispatch(WriterListenerEventType.ON_LIVELINESS_LOST, writer=writer, status=status)
 
     def on_offered_deadline_missed(self, writer: dds.DataWriter, status: dds.OfferedDeadlineMissedStatus):
@@ -80,7 +79,6 @@ class ReportProvider(dds.DataWriterListener):
 
     def on_publication_matched(self, writer: dds.DataWriter, status: dds.PublicationMatchedStatus):
         self._logger.debug("On publication matched triggered")
-        self._logger.debug(f"Publication subscriber count: {status.current_count}")
         self._dispatch(WriterListenerEventType.ON_PUBLICATION_MATCHED, writer=writer, status=status)
 
     def on_reliable_reader_activity_changed(
@@ -99,13 +97,4 @@ class ReportProvider(dds.DataWriterListener):
 
     def _dispatch(self, event: WriterListenerEventType, *args, **kwargs) -> None:
         for cb in self._callbacks[event]:
-            if issubclass(cb, Command):
-                self._logger.debug("Dispatching subclass of Command")
-                cmd = cb(*args, **kwargs)
-                self._pool.submit(cmd)
-            elif isinstance(cb, Command):
-                self._logger.debug("Dispatching instance of Command")
-                self._pool.submit(cb)
-            else:
-                self._logger.debug("Dispatching callable")
-                self._pool.submit(cb)
+            self._pool.submit(cb, *args, priority=self._report_priority, **kwargs)
