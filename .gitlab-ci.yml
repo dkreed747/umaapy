@@ -92,7 +92,7 @@ sonar:
       - "${SONAR_USER_HOME}/cache"
       - sonar-scanner/
   script:
-    - pip install dist/*.whl
+    - pip3 install dist/*.whl
     - sonar-scanner -Dsonar.host.url="${SONAR_HOST_URL}"
   allow_failure: true
 
