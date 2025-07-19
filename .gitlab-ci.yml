@@ -74,6 +74,9 @@ test:
 
 sonar:
   stage: test
+  needs:
+    - job: test
+      artifacts: true
   tags:
     - dkr-run
   image: sonarsource/sonar-scanner-cli:11
