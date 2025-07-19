@@ -30,9 +30,16 @@ Features
    usage/development
 
 .. toctree::
-   :maxdepth: 3
+   :maxdepth: 2
    :caption: API Documentation
 
    umaapy/report_consumer
    umaapy/report_provider
    umaapy/command_provider
+
+   umaapy/dds_configurator
+   umaapy/event_processor
+   umaapy/timestamp
+   umaapy/umaa_command
+   umaapy/umaa_utils
+   umaapy/uuid_factory
