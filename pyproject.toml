@@ -9,6 +9,12 @@ description = "Python UMAA SDK for rapid autonomy development"
 readme = "README.md"
 requires-python = ">=3.13"
 
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+
 authors = [
     { name = "Devon Reed", email = "clr5436@psu.edu" }
 ]
@@ -17,10 +23,19 @@ dependencies = [
   "rti.connext>=7.5.0"
 ]
 
-classifiers = [
-    "Programming Language :: Python :: 3",
-    "License :: OSI Approved :: MIT License",
-    "Operating System :: OS Independent",
+[project.optional-dependencies]
+tests = [
+  "pytest>=8.4.1",
+  "pytest-cov>=6.2.1",
+]
+docs = [
+  "Sphinx>=8.2.3",
+  "sphinx-autodoc-typehints>=3.2.0",
+  "autodocsumm>=0.2.14",
+  "sphinx_rtd_theme>=3.0.2",
+  "doc8>=2.0.0",
+  "sphinxcontrib-mermaid>=1.0.0",
+  "rstcheck>=6.2.5"
 ]
 
 [project.urls]
