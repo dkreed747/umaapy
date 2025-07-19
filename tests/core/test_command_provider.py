@@ -83,8 +83,8 @@ def test_49_umaa_command_flow():
 
     gv_cmd = UMAA_MO_GlobalVectorControl_GlobalVectorCommandType()
     gv_cmd.destination = _global_vector_control_source_id
+    sleep(2.0)
 
-    sleep(0.5)
     test_cmd_writer.write(gv_cmd)
     sleep(0.5)
     test_cmd_writer.write(gv_cmd)

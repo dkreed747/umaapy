@@ -30,7 +30,7 @@ def guid_to_hex(guid: UMAA_Common_Measurement_NumericGUID) -> str:
     :rtype: str
     """
     # Join each byte formatted as two-digit hex
-    return "".join(f"{b:02x}" for b in guid.value)
+    return " ".join(f"{b:02x}" for b in guid.value)
 
 
 def generate_guid() -> UMAA_Common_Measurement_NumericGUID:

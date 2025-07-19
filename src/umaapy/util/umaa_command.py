@@ -163,8 +163,8 @@ class UmaaCommand(Command):
         try:
             self._send_ack()
 
-            # Stage: Issued
             while True:
+                # Stage: Issued
                 with self._condition:
                     status_reason = CmdReason.UPDATED if self._updated else CmdReason.SUCCEEDED
                     self._send_status(CmdStatus.ISSUED, status_reason, "Command issued.")
@@ -176,6 +176,8 @@ class UmaaCommand(Command):
                 if self._cancelled:
                     self._send_status(CmdStatus.CANCELED, CmdReason.CANCELED, "Command canceled.")
                     return
+                if self._updated:
+                    continue
 
                 # Stage: Executing
                 self._send_status(CmdStatus.EXECUTING, CmdReason.SUCCEEDED, "Command execution started.")
@@ -183,6 +185,8 @@ class UmaaCommand(Command):
                 if self._cancelled:
                     self._send_status(CmdStatus.CANCELED, CmdReason.CANCELED, "Command canceled.")
                     return
+                if self._updated:
+                    continue
 
                 # Stage: Complete
                 self._send_status(CmdStatus.EXECUTING, CmdReason.SUCCEEDED, "Command completed.")
