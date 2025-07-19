@@ -34,6 +34,7 @@ docs = [
   "autodocsumm>=0.2.14",
   "sphinx_rtd_theme>=3.0.2",
   "doc8>=2.0.0",
+  "sphinxcontrib-mermaid>=1.0.0",
   "rstcheck>=6.2.5"
 ]
 

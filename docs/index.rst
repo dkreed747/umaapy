@@ -43,3 +43,10 @@ Features
    umaapy/umaa_command
    umaapy/umaa_utils
    umaapy/uuid_factory
+
+.. toctree::
+   :maxdepth: 4
+   :caption: GitLab Wiki Export
+
+   wiki/index
+
