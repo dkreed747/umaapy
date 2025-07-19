@@ -39,13 +39,13 @@ def test_47_send_report():
     reset_dds_participant()
     source_id = build_identifier_type("cec418f0-32de-4aee-961d-9530e79869bd", "8ca7d105-5832-4a4b-bec2-a405ebd33e33")
 
+    now = Timestamp.now()
+    sleep(0.5)
+
     gpr = ReportProvider(
         source_id,
         UMAA_SA_GlobalPoseStatus_GlobalPoseReportType,
     )
-
-    now = Timestamp.now()
-    sleep(0.5)
 
     test_reader = get_configurator().get_reader(UMAA_SA_GlobalPoseStatus_GlobalPoseReportType)
 
@@ -53,6 +53,7 @@ def test_47_send_report():
     send_sample.position.geodeticLatitude = 47.654
     send_sample.position.geodeticLongitude = -122.6079
 
+    sleep(0.5)
     gpr.publish(send_sample)
     sleep(0.5)
 
