@@ -147,3 +147,16 @@ container:
   artifacts:
     expire_in: 1h
     reports: {}
+
+pages:
+  stage: deploy
+  tags:
+    - dkr-run
+  image: dkreed747/umaapy-dev:latest
+  before_script:
+    - pip install --upgrade pip sphinx
+  script:
+    - sphinx-build -b html docs/ public/
+  artifacts:
+    paths:
+      - public

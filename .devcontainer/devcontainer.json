@@ -17,7 +17,8 @@
         "GitLab.gitlab-workflow",
         "redhat.vscode-yaml",
         "streetsidesoftware.code-spell-checker",
-        "redhat.vscode-xml"
+        "redhat.vscode-xml",
+        "lextudio.restructuredtext"
       ]
     }
   }

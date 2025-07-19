@@ -17,6 +17,20 @@ dependencies = [
   "rti.connext>=7.5.0"
 ]
 
+[project.optional-dependencies]
+tests = [
+  "pytest>=8.4.1",
+  "pytest-cov>=6.2.1",
+]
+docs = [
+  "Sphinx>=8.2.3",
+  "sphinx-autodoc-typehints>=3.2.0",
+  "autodocsumm>=0.2.14",
+  "sphinx_rtd_theme>=3.0.2",
+  "doc8>=2.0.0",
+  "rstcheck>=6.2.5"
+]
+
 classifiers = [
     "Programming Language :: Python :: 3",
     "License :: OSI Approved :: MIT License",
