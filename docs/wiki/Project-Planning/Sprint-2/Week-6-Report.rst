@@ -1,5 +1,5 @@
-Weekly Progress Report
-======================
+Weekly Progress Report 6
+========================
 
 **Project Name:** UMAAPy
 

@@ -1,5 +1,5 @@
-Sprint Retrospective: Sprint {{Sprint Number}}
-==============================================
+Sprint 4 Retrospective
+======================
 
 | **Date:** {{YYYY-MM-DD}}
 | **Facilitator:** {{Name}}
@@ -30,23 +30,23 @@ Sprint Retrospective: Sprint {{Sprint Number}}
 3. What Went Well ✅
 --------------------
 
-- 
-- 
-- 
+-
+-
+-
 
 4. What Didn’t Go So Well ❌
 ----------------------------
 
-- 
-- 
-- 
+-
+-
+-
 
 5. What Can Be Done Better 💡
 -----------------------------
 
-- 
-- 
-- 
+-
+-
+-
 
 6. Improvements & Action Items for Next Sprint
 ----------------------------------------------

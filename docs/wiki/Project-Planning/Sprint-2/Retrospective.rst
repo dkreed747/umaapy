@@ -1,5 +1,5 @@
-Sprint Retrospective: Sprint 2
-==============================
+Sprint 2 Retrospective
+======================
 
 | **Date:** 7/5/25 **Facilitator:** Devon Reed
 | **Participants:** Devon Reed **Timebox:** 30m

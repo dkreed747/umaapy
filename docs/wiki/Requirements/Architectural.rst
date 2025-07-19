@@ -46,7 +46,7 @@ AR-05 Containers
    ensuring consistent behavior and portability
 
 UMAAPy Architectural Design
----------------------------
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. mermaid::
 
@@ -107,7 +107,7 @@ UMAAPy Architectural Design
      MissionOrchestrator -- exposes capability map --> C2
 
 Type generation and Introspection
----------------------------------
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 - UMAA IDL Files are passed to rsiddsgen to create the full Python data
   types.
@@ -115,15 +115,15 @@ Type generation and Introspection
   their data.
 
 Global Configuration and Logging
---------------------------------
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 - GlobalConfig is a central object that holds QoS settings for each UMAA
   paradigm. Users can adjust these settings at runtime.
-- LoggingWrapper wraps Python’s logging module in a smart way to
+- LoggingWrapper wraps Python's logging module in a smart way to
   implement the UMAA log report type
 
 Core pub/Sub services
----------------------
+^^^^^^^^^^^^^^^^^^^^^
 
 - Report Provider/Consumer are high-level classes for
   publishing/subscribing UMAA report types
@@ -131,24 +131,24 @@ Core pub/Sub services
   Collection paradigm
 
 Commanded Services
-------------------
+^^^^^^^^^^^^^^^^^^
 
-- CommandConsumer/CommandProvider implement UMAA’s special form of RPC
+- CommandConsumer/CommandProvider implement UMAA's special form of RPC
   using DDS listeners, driven by events and executed via the internal
   thread poool
 
 Objectives and Mission Orchestration
-------------------------------------
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 - These two are behavior level APIs that expose methods for building
-  behaviors and plannig missions with them.
+  behaviors and planing missions with them.
 - The ObjectiveExecutor is a base skeleton that components register
   against.
 - The MissionOrchestrator listens for objective registrations and
   maintains a live capability map
 
 Concurrency and DDS integration
--------------------------------
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 - Thread pool ensures all tasks from the core UMAA components are ran
   safely and efficiently.
@@ -158,8 +158,8 @@ Concurrency and DDS integration
   QoS.
 
 Motivation
-----------
+^^^^^^^^^^
 
 Together, these components form a modular, highly configurable SDK that
 shields users from DDS and UMAA boilerplate while providing full access
-to UMAA’s powerful autonomy paradigms.
+to UMAA's powerful autonomy paradigms.

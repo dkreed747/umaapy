@@ -1,4 +1,4 @@
-Sprint Retrospective: Sprint 1
+Sprint 1 Retrospective
 ==============================
 
 **Date:** 06/15/25
