@@ -70,13 +70,12 @@ test:
       - .pytest_cache/
       - coverage.xml
       - report.xml
+      - /usr/local/lib/python3.13/site-packages/umaapy/
 
 
 sonar:
   stage: test
   needs:
-    - job: umaapy
-      artifacts: true
     - job: test
       artifacts: true
   tags:
@@ -92,7 +91,6 @@ sonar:
       - "${SONAR_USER_HOME}/cache"
       - sonar-scanner/
   script:
-    - pip3 install dist/*.whl
     - sonar-scanner -Dsonar.host.url="${SONAR_HOST_URL}"
   allow_failure: true
 
