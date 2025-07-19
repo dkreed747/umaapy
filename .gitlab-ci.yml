@@ -157,7 +157,7 @@ pages:
     - job: umaapy
       artifacts: true
   before_script:
-    - pip install --upgrade pip sphinx sphinx-autodoc-typehints autodocsumm sphinx_rtd_theme doc8
+    - pip install --upgrade pip sphinx sphinx-autodoc-typehints autodocsumm sphinx_rtd_theme doc8 sphinxcontrib-mermaid
     - pip install dist/*.whl
   script:
     - sphinx-build -b html docs/ public/
