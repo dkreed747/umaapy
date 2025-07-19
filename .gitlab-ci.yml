@@ -70,7 +70,30 @@ test:
       - .pytest_cache/
       - coverage.xml
       - report.xml
+      - /usr/local/lib/python3.13/site-packages/umaapy/
 
+sonar:
+  stage: test
+  needs:
+    - job: test
+      artifacts: true
+  tags:
+    - dkr-run
+  image: sonarsource/sonar-scanner-cli:11
+  variables:
+    SONAR_USER_HOME: "${CI_PROJECT_DIR}/.sonar"  # Defines the location of the analysis task cache
+    GIT_DEPTH: "0"  # Tells git to fetch all the branches of the project, required by the analysis task
+  cache:
+    policy: pull-push
+    key: "sonar-cache-$CI_COMMIT_REF_SLUG"
+    paths:
+      - "${SONAR_USER_HOME}/cache"
+      - sonar-scanner/
+  script:
+    - sed -i 's|/usr/local/lib/python3.13/site-packages/umaapy|src/umaapy|g' coverage.xml
+    - sed -i 's|<sources>.*</sources>|<sources><source>src/umaapy</source></sources>|' coverage.xml
+    - sonar-scanner -Dsonar.host.url="${SONAR_HOST_URL}"
+  allow_failure: true
 
 package:
   stage: deploy
@@ -124,4 +147,3 @@ container:
   artifacts:
     expire_in: 1h
     reports: {}
-

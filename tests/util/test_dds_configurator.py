@@ -16,12 +16,8 @@ def test_get_topic():
 
     topic = config_boy.get_topic(UMAA_SA_GlobalPoseStatus_GlobalPoseReportType)
 
-    topics = len(config_boy.topics)
-
-    assert len(config_boy.topics) == topics
-    # Calling again will already know the topic
     config_boy = DDSConfigurator(0, qos_file)
-    assert len(config_boy.topics) == topics
+    assert topic is not None
 
 
 def test_load_reader_writer():

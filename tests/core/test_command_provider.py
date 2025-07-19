@@ -4,29 +4,23 @@ from time import sleep
 import logging
 import rti.connextdds as dds
 
-from umaapy import configurator
+from umaapy import get_configurator, get_event_processor, reset_dds_participant
 from umaapy.util.dds_configurator import UmaaQosProfileCategory
 from umaapy.core.command_provider import CommandProvider
 from umaapy.util.uuid_factory import *
-from umaapy import event_processor
 
-from umaapy.examples.global_vector_control import (
-    _global_vector_control_source_id,
-    _global_vector_control_command_factory,
-)
+from umaapy.examples.global_vector_control import GlobalVectorControlCommandFactory, _global_vector_control_source_id
 
 from umaapy.umaa_types import (
     UMAA_Common_IdentifierType,
     UMAA_MO_GlobalVectorControl_GlobalVectorCommandType,
-    UMAA_MO_GlobalVectorControl_GlobalVectorCommandTypeTopic,
     UMAA_MO_GlobalVectorControl_GlobalVectorCommandAckReportType,
-    UMAA_MO_GlobalVectorControl_GlobalVectorCommandAckReportTypeTopic,
     UMAA_MO_GlobalVectorControl_GlobalVectorCommandStatusType,
-    UMAA_MO_GlobalVectorControl_GlobalVectorCommandStatusTypeTopic,
+    UMAA_MO_GlobalVectorControl_GlobalVectorExecutionStatusReportType,
     UMAA_Common_MaritimeEnumeration_CommandStatusEnumModule_CommandStatusEnumType as CmdStatus,
 )
 
-_logger = logging.getLogger(f"{__file__.split("/")[-1]}")
+_logger = logging.getLogger(__name__)
 
 
 class TestStatusListener(dds.DataReaderListener):
@@ -40,15 +34,9 @@ class TestStatusListener(dds.DataReaderListener):
             self.sample_list.append(sample.commandStatus)
 
 
-global_vector_control_service_provider = CommandProvider(
-    _global_vector_control_source_id,
-    _global_vector_control_command_factory,
-    UMAA_MO_GlobalVectorControl_GlobalVectorCommandType,
-    UMAA_MO_GlobalVectorControl_GlobalVectorCommandTypeTopic,
-)
-
-
 def test_49_umaa_command_flow():
+    reset_dds_participant()
+
     test_status_flow = [
         CmdStatus.ISSUED,
         CmdStatus.COMMANDED,
@@ -60,22 +48,35 @@ def test_49_umaa_command_flow():
     ]
     status_listener = TestStatusListener()
 
-    test_cmd_writer = configurator.get_writer(
-        UMAA_MO_GlobalVectorControl_GlobalVectorCommandType,
-        UMAA_MO_GlobalVectorControl_GlobalVectorCommandTypeTopic,
-        UmaaQosProfileCategory.COMMAND,
-    )
-
-    test_ack_reader = configurator.get_reader(
+    GlobalVectorControlCommandFactory(
         UMAA_MO_GlobalVectorControl_GlobalVectorCommandAckReportType,
-        UMAA_MO_GlobalVectorControl_GlobalVectorCommandAckReportTypeTopic,
-        UmaaQosProfileCategory.COMMAND,
+        UMAA_MO_GlobalVectorControl_GlobalVectorCommandStatusType,
+        UMAA_MO_GlobalVectorControl_GlobalVectorExecutionStatusReportType,
     )
 
-    test_status_reader = configurator.get_reader(
+    global_vector_control_service_provider = CommandProvider(
+        _global_vector_control_source_id,
+        GlobalVectorControlCommandFactory(
+            UMAA_MO_GlobalVectorControl_GlobalVectorCommandAckReportType,
+            UMAA_MO_GlobalVectorControl_GlobalVectorCommandStatusType,
+            UMAA_MO_GlobalVectorControl_GlobalVectorExecutionStatusReportType,
+        ),
+        UMAA_MO_GlobalVectorControl_GlobalVectorCommandType,
+    )
+
+    test_cmd_writer = get_configurator().get_writer(
+        UMAA_MO_GlobalVectorControl_GlobalVectorCommandType,
+        profile_category=UmaaQosProfileCategory.COMMAND,
+    )
+
+    test_ack_reader = get_configurator().get_reader(
+        UMAA_MO_GlobalVectorControl_GlobalVectorCommandAckReportType,
+        profile_category=UmaaQosProfileCategory.COMMAND,
+    )
+
+    test_status_reader = get_configurator().get_reader(
         UMAA_MO_GlobalVectorControl_GlobalVectorCommandStatusType,
-        UMAA_MO_GlobalVectorControl_GlobalVectorCommandStatusTypeTopic,
-        UmaaQosProfileCategory.COMMAND,
+        profile_category=UmaaQosProfileCategory.COMMAND,
     )
 
     test_status_reader.set_listener(status_listener, dds.StatusMask.DATA_AVAILABLE)
@@ -99,18 +100,34 @@ def test_49_umaa_command_flow():
 
 
 def test_50_destination_content_filter():
+    reset_dds_participant()
+    sleep(1)
     status_listener = TestStatusListener()
 
-    test_cmd_writer = configurator.get_writer(
-        UMAA_MO_GlobalVectorControl_GlobalVectorCommandType,
-        UMAA_MO_GlobalVectorControl_GlobalVectorCommandTypeTopic,
-        UmaaQosProfileCategory.COMMAND,
+    GlobalVectorControlCommandFactory(
+        UMAA_MO_GlobalVectorControl_GlobalVectorCommandAckReportType,
+        UMAA_MO_GlobalVectorControl_GlobalVectorCommandStatusType,
+        UMAA_MO_GlobalVectorControl_GlobalVectorExecutionStatusReportType,
     )
 
-    test_status_reader = configurator.get_reader(
+    global_vector_control_service_provider = CommandProvider(
+        _global_vector_control_source_id,
+        GlobalVectorControlCommandFactory(
+            UMAA_MO_GlobalVectorControl_GlobalVectorCommandAckReportType,
+            UMAA_MO_GlobalVectorControl_GlobalVectorCommandStatusType,
+            UMAA_MO_GlobalVectorControl_GlobalVectorExecutionStatusReportType,
+        ),
+        UMAA_MO_GlobalVectorControl_GlobalVectorCommandType,
+    )
+
+    test_cmd_writer = get_configurator().get_writer(
+        UMAA_MO_GlobalVectorControl_GlobalVectorCommandType,
+        profile_category=UmaaQosProfileCategory.COMMAND,
+    )
+
+    test_status_reader = get_configurator().get_reader(
         UMAA_MO_GlobalVectorControl_GlobalVectorCommandStatusType,
-        UMAA_MO_GlobalVectorControl_GlobalVectorCommandStatusTypeTopic,
-        UmaaQosProfileCategory.COMMAND,
+        profile_category=UmaaQosProfileCategory.COMMAND,
     )
 
     test_status_reader.set_listener(status_listener, dds.StatusMask.DATA_AVAILABLE)
@@ -126,10 +143,28 @@ def test_50_destination_content_filter():
 
 
 def test_51_new_commands_added_to_thread_pool():
-    test_cmd_writer = configurator.get_writer(
+    reset_dds_participant()
+    sleep(1)
+
+    GlobalVectorControlCommandFactory(
+        UMAA_MO_GlobalVectorControl_GlobalVectorCommandAckReportType,
+        UMAA_MO_GlobalVectorControl_GlobalVectorCommandStatusType,
+        UMAA_MO_GlobalVectorControl_GlobalVectorExecutionStatusReportType,
+    )
+
+    global_vector_control_service_provider = CommandProvider(
+        _global_vector_control_source_id,
+        GlobalVectorControlCommandFactory(
+            UMAA_MO_GlobalVectorControl_GlobalVectorCommandAckReportType,
+            UMAA_MO_GlobalVectorControl_GlobalVectorCommandStatusType,
+            UMAA_MO_GlobalVectorControl_GlobalVectorExecutionStatusReportType,
+        ),
         UMAA_MO_GlobalVectorControl_GlobalVectorCommandType,
-        UMAA_MO_GlobalVectorControl_GlobalVectorCommandTypeTopic,
-        UmaaQosProfileCategory.COMMAND,
+    )
+
+    test_cmd_writer = get_configurator().get_writer(
+        UMAA_MO_GlobalVectorControl_GlobalVectorCommandType,
+        profile_category=UmaaQosProfileCategory.COMMAND,
     )
 
     sleep(0.5)
@@ -138,4 +173,4 @@ def test_51_new_commands_added_to_thread_pool():
     gv_cmd.destination = _global_vector_control_source_id
     test_cmd_writer.write(gv_cmd)
 
-    assert event_processor.get_pending_task_count() == 0
+    assert get_event_processor().get_pending_task_count() == 0

@@ -5,6 +5,8 @@ import rti.connextdds as dds
 
 from umaapy.util.umaa_utils import topic_from_type
 
+# dds.Logger.instance.verbosity_by_category(dds.LogCategory.all_categories, dds.Verbosity.STATUS_ALL)
+
 
 class UmaaQosProfileCategory(Enum):
     """UMAA QoS profile type enum"""
@@ -62,7 +64,8 @@ class DDSConfigurator:
         if getattr(self, "_initialized", False):
             return
         self._initialized = True
-
+        self._domain_id = domain_id
+        self._qos_file = qos_file
         self.qos_provider = dds.QosProvider(qos_file)
         self.participant = dds.DomainParticipant(
             domain_id, qos=self.qos_provider.participant_qos_from_profile("UMAAPyQosLib::ParticipantProfile")
@@ -70,13 +73,13 @@ class DDSConfigurator:
 
         self.publisher = dds.Publisher(self.participant)
         self.subscriber = dds.Subscriber(self.participant)
-        self.topics = {}
 
     def get_topic(self, data_type: Type, name: str = None):
         name = topic_from_type(data_type) if name is None else name
-        if name not in self.topics:
-            self.topics[name] = dds.Topic(self.participant, name, data_type)
-        return self.topics[name]
+        topic = dds.Topic.find(self.participant, name)
+        if topic is None:
+            topic = dds.Topic(self.participant, name, data_type)
+        return topic
 
     def get_writer(
         self,
@@ -111,7 +114,22 @@ class DDSConfigurator:
         profile = self.PROFILE_DICT[profile_category]
         topic = self.get_topic(data_type, topic_name)
         reader_qos: dds.DataReaderQos = self.qos_provider.datareader_qos_from_profile(profile)
-        cft = dds.ContentFilteredTopic(
-            topic, f"{topic.name}Filtered", dds.Filter(filter_expression, parameters=filter_parameters or [])
-        )
+        cft = dds.ContentFilteredTopic.find(self.participant, f"{topic.name}Filtered")
+        if cft is None:
+            cft = dds.ContentFilteredTopic(
+                topic, f"{topic.name}Filtered", dds.Filter(filter_expression, parameters=filter_parameters or [])
+            )
         return dds.DataReader(self.subscriber, cft, qos=reader_qos)
+
+    @classmethod
+    def reset(cls):
+        with cls._instance_lock:
+            inst = cls._instance
+            if not inst:
+                return
+
+            inst.participant.close_contained_entities()
+            inst.participant.close()
+            if hasattr(inst, "_initialized"):
+                delattr(inst, "_initialized")
+            inst.__init__(inst._domain_id, inst._qos_file)

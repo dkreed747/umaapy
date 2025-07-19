@@ -60,12 +60,3 @@ class GlobalVectorControlCommandFactory(UmaaCommandFactory):
 _global_vector_control_source_id = build_identifier_type(
     "476c6f62-616c-5665-6374-6f724374726c", "00000000-0000-0000-0000-000000000000"
 )
-
-_global_vector_control_command_factory = GlobalVectorControlCommandFactory(
-    UMAA_MO_GlobalVectorControl_GlobalVectorCommandAckReportType,
-    UMAA_MO_GlobalVectorControl_GlobalVectorCommandAckReportTypeTopic,
-    UMAA_MO_GlobalVectorControl_GlobalVectorCommandStatusType,
-    UMAA_MO_GlobalVectorControl_GlobalVectorCommandStatusTypeTopic,
-    UMAA_MO_GlobalVectorControl_GlobalVectorExecutionStatusReportType,
-    UMAA_MO_GlobalVectorControl_GlobalVectorExecutionStatusReportTypeTopic,
-)

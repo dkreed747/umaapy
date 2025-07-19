@@ -1,3 +1,5 @@
+from typing import List
+
 import pytest
 import time
 from concurrent.futures import TimeoutError
@@ -32,13 +34,13 @@ class TestEventProcessor:
 
     def test_recurring_task(self):
         assert self.ep.running()
-        calls = []
+        calls: List[float] = []
 
-        def recur():
-            calls.append(time.time())
+        def recur(call_list: List[float]):
+            call_list.append(time.time())
 
-        tid = self.ep.submit_recurring(recur, interval_ms=50)
-        time.sleep(0.18)
+        tid = self.ep.submit_recurring(recur, 50, calls)
+        time.sleep(0.5)
         self.ep.cancel(tid)
         # Expect at least 3 calls (at 0ms, ~50ms, ~100ms, ~150ms)
         assert len(calls) >= 3

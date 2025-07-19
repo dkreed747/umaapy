@@ -4,10 +4,10 @@ import logging
 from concurrent.futures import Future
 import rti.connextdds as dds
 
+from umaapy import get_configurator, get_event_processor
 from umaapy.util.umaa_command import UmaaCommand, UmaaCommandFactory
 from umaapy.util.event_processor import EventProcessor, LOW, MEDIUM, HIGH
 from umaapy.util.dds_configurator import UmaaQosProfileCategory
-from umaapy import event_processor, configurator
 from umaapy.util.umaa_utils import validate_command
 from umaapy.util.uuid_factory import guid_to_hex
 
@@ -22,7 +22,6 @@ class CommandProvider(dds.DataReaderListener):
         source: UMAA_Common_IdentifierType,
         cmd_factory: UmaaCommandFactory,
         cmd_type: Type,
-        cmd_type_topic: str,
         cmd_priority: int = LOW,
     ):
         super().__init__()
@@ -34,8 +33,7 @@ class CommandProvider(dds.DataReaderListener):
             raise RuntimeError(f"'{cmd_type.__name__.split("_")[-1]}' is not a valid UMAA command.")
         self._cmd_type: Type = cmd_type
 
-        self._pool: EventProcessor = event_processor
-        self._cmd_reader: dds.DataReader = configurator.get_filtered_reader(
+        self._cmd_reader: dds.DataReader = get_configurator().get_filtered_reader(
             cmd_type,
             f"destination.parentID = &hex({guid_to_hex(source.parentID)}) AND destination.id = &hex({guid_to_hex(source.id)})",
             profile_category=UmaaQosProfileCategory.COMMAND,
@@ -56,7 +54,7 @@ class CommandProvider(dds.DataReaderListener):
             if info.valid:
                 if self._active_command_future is None or self._active_command_future.done():
                     self._active_command = self._cmd_factory.build(data)
-                    self._active_command_future = self._pool.submit(self._active_command, self._cmd_priority)
+                    self._active_command_future = get_event_processor().submit(self._active_command, self._cmd_priority)
                 else:
                     if self._active_command.command.sessionID == data.sessionID:
                         self._active_command.update(data)

@@ -31,5 +31,24 @@ QOS_FILE = ""
 with importlib.resources.path("umaapy.resource", "umaapy_qos_lib.xml") as module_qos_path:
     QOS_FILE = os.getenv("QOS_FILE", str(module_qos_path))
 
-configurator = DDSConfigurator(DOMAIN_ID, QOS_FILE)
-event_processor = EventProcessor()
+
+def get_configurator() -> DDSConfigurator:
+    return DDSConfigurator(DOMAIN_ID, QOS_FILE)
+
+
+def get_event_processor() -> EventProcessor:
+    return EventProcessor()
+
+
+def reset_dds_participant():
+    DDSConfigurator.reset()
+    get_configurator()
+
+
+def reset_thread_pool():
+    EventProcessor.reset()
+    get_event_processor()
+
+
+get_configurator()
+get_event_processor()
