@@ -59,7 +59,8 @@ test:
   script:
     - pip install dist/*.whl
     - pytest
-    - coverage xml -o coverage.xml
+    - sed -i 's|/usr/local/lib/python3.13/site-packages/umaapy|src/umaapy|g' coverage.xml
+    - sed -i 's|<sources>.*</sources>|<sources><source>src/umaapy</source></sources>|' coverage.xml
   coverage: '/TOTAL.*? (100(?:\.0+)?\%\|[1-9]?\d(?:\.\d+)?\%)$/'
   artifacts:
     when: always
