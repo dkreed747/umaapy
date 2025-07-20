@@ -61,3 +61,18 @@ html_sidebars = {
         "searchbox.html",
     ]
 }
+
+mermaid_cmd = [r"C:\Users\Dkree\AppData\Roaming\npm\mmdc.cmd"]
+
+latex_elements = {
+    "preamble": r"""
+\usepackage[utf8]{inputenc}
+\usepackage{amssymb}
+\usepackage{amssymb}
+\usepackage{pifont}
+\DeclareUnicodeCharacter{2705}{\checkmark}
+\DeclareUnicodeCharacter{274C}{\ding{55}}
+\DeclareUnicodeCharacter{1F4A1}{\ding{92}}
+\DeclareUnicodeCharacter{2610}{$\square$}
+"""
+}

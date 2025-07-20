@@ -59,6 +59,7 @@ test:
   script:
     - pip install dist/*.whl
     - pytest
+  coverage: '/TOTAL.*? (100(?:\.0+)?\%\|[1-9]?\d(?:\.\d+)?\%)$/'
   artifacts:
     when: always
     reports:
