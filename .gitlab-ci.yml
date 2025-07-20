@@ -60,6 +60,9 @@ test:
     - pip install --target wheel_lib dist/*.whl
     - export PYTHONPATH="$CI_PROJECT_DIR/wheel_lib:$PYTHONPATH"
     - pytest
+    - sed -i 's|<source>\(.*umaapy\)</source>|<source>\1/src/umaapy</source>|g' coverage.xml
+    - sed -i 's|wheel_lib/umaapy|src/umaapy|g' coverage.xml
+    - sed -i 's|wheel_lib.umaapy|umaapy|g' coverage.xml
   coverage: '/TOTAL.*? (100(?:\.0+)?\%\|[1-9]?\d(?:\.\d+)?\%)$/'
   artifacts:
     when: always
@@ -72,7 +75,6 @@ test:
       - .pytest_cache/
       - coverage.xml
       - report.xml
-      - /usr/local/lib/python3.13/site-packages/umaapy/
 
 sonar:
   stage: test
@@ -92,8 +94,6 @@ sonar:
       - "${SONAR_USER_HOME}/cache"
       - sonar-scanner/
   script:
-    - sed -i 's|/usr/local/lib/python3.13/site-packages/umaapy|src/umaapy|g' coverage.xml
-    - sed -i 's|<sources>.*</sources>|<sources><source>src/umaapy</source></sources>|' coverage.xml
     - sonar-scanner -Dsonar.host.url="${SONAR_HOST_URL}"
   allow_failure: true
 
