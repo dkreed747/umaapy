@@ -94,6 +94,7 @@ sonar:
       - "${SONAR_USER_HOME}/cache"
       - sonar-scanner/
   script:
+    - sed -i 's|filename="src/umaapy/|filename="umaapy/|g' coverage.xml
     - sonar-scanner -Dsonar.host.url="${SONAR_HOST_URL}"
   allow_failure: true
 
