@@ -57,10 +57,9 @@ test:
     - pip install --upgrade pip build setuptools-scm twine
     - cp $RTI_LICENSE $NDDSHOME/rti_license.dat
   script:
-    - pip install dist/*.whl
+    - pip install --target wheel_lib dist/*.whl
+    - export PYTHONPATH="$CI_PROJECT_DIR/wheel_lib:$PYTHONPATH"
     - pytest
-    - sed -i 's|/usr/local/lib/python3.13/site-packages/umaapy|src/umaapy|g' coverage.xml
-    - sed -i 's|<sources>.*</sources>|<sources><source>src/umaapy</source></sources>|' coverage.xml
   coverage: '/TOTAL.*? (100(?:\.0+)?\%\|[1-9]?\d(?:\.\d+)?\%)$/'
   artifacts:
     when: always

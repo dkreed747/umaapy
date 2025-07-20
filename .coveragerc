@@ -1,0 +1,13 @@
+[run]
+source = umaapy
+
+branch = True
+
+[paths]
+source =
+    src/umaapy
+    /usr/local/lib/python3.13/site-packages/umaapy
+
+[xml]
+output = coverage.xml
+relative = True

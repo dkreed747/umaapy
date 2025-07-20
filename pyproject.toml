@@ -64,7 +64,7 @@ extend-exclude = '''
 testpaths = ["tests"]
 junit_family = "xunit2"
 junit_suite_name = "pytest"
-addopts = "--capture=tee-sys --cov=./src/umaapy --cov-report=xml:coverage.xml --cov-report=term-missing --maxfail=1 --disable-warnings -q --junitxml=report.xml"
+addopts = "--capture=tee-sys --cov-report=xml:coverage.xml --cov-report=term-missing --maxfail=1 --disable-warnings -q --junitxml=report.xml"
 
 [tool.setuptools_scm]
 version_file = "src/umaapy/_version.py"
