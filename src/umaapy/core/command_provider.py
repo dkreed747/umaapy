@@ -55,7 +55,7 @@ class CommandProvider(dds.DataReaderListener):
             f"destination.parentID = &hex({guid_to_hex(source.parentID)})"
             f" AND destination.id = &hex({guid_to_hex(source.id)})"
         )
-        self._cmd_reader: dds.DataReader = get_configurator().get_filtered_reader(
+        self._cmd_reader, _ = get_configurator().get_filtered_reader(
             cmd_type,
             filter_expr,
             profile_category=UmaaQosProfileCategory.COMMAND,
