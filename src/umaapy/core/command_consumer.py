@@ -8,9 +8,6 @@ from uuid import UUID
 
 import rti.connextdds as dds
 
-dds.Logger.instance.verbosity = dds.Verbosity.STATUS_ALL
-dds.Logger.instance.output_file("connext_log.txt")
-
 from umaapy.util.provider import Provider
 from umaapy.util.command_session import CommandSession
 from umaapy.util.reader_listener import ReaderListener
@@ -168,8 +165,8 @@ class CommandConsumer(dds.DataWriterListener):
             del self._providers_by_handle[provider.reader_handle]
 
         for session_id, session in provider.sessions.items():
-            session.close()
-            self._providers_by_session.pop(session_id, None)
+            session.cancel()
+        self._providers_by_session.pop(session_id, None)
 
     def get_providers(self) -> List[Provider]:
         return list(self._providers_by_source.values())
@@ -360,7 +357,7 @@ class CommandConsumer(dds.DataWriterListener):
         self._logger.debug(
             f"Updating content filter expression for {len(filter_components)} sessions across {len(self._providers_by_source)} providers."
         )
-        reader_filter: dds.Filter = dds.Filter(" OR ".join(filter_components))
+        reader_filter: dds.Filter = dds.Filter(" OR ".join(filter_components) if len(filter_components) else "1 = 0")
         self._ack_cft.set_filter(reader_filter)
         self._status_cft.set_filter(reader_filter)
         if self._execution_status_cft is not None:

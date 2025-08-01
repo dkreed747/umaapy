@@ -190,8 +190,8 @@ class UmaaCommand(Command):
                     continue
 
                 # Stage: Complete
-                self._send_status(CmdStatus.EXECUTING, CmdReason.SUCCEEDED, "Command completed.")
                 self.on_complete()
+                self._send_status(CmdStatus.COMPLETED, CmdReason.SUCCEEDED, "Command completed.")
                 break
 
         except UmaaCommandException as uce:
@@ -210,6 +210,34 @@ class UmaaCommand(Command):
             # Always call terminal hook
             self._logger.debug("Command execution terminal stage.")
             self.on_terminal()
+
+            ack = self._ack_writer.topic.type()
+            ack.source = self._source_id
+            ack.sessionID = self.command.sessionID
+            try:
+                ih = self._ack_writer.lookup_instance(ack)
+                self._ack_writer.dispose_instance(ih)
+            except Exception as e:
+                pass
+
+            status = self._status_writer.topic.type()
+            status.source = self._source_id
+            status.sessionID = self.command.sessionID
+            try:
+                ih = self._status_writer.lookup_instance(ack)
+                self._status_writer.dispose_instance(ih)
+            except Exception as e:
+                pass
+
+            if self._execution_status_writer:
+                execution_status = self._execution_status_writer.topic.type()
+                execution_status.source = self._source_id
+                execution_status.sessionID = self.command.sessionID
+                try:
+                    ih = self._execution_status_writer.lookup_instance(ack)
+                    self._execution_status_writer.dispose_instance(ih)
+                except Exception as e:
+                    pass
 
     def on_commanded(self) -> None:
         """

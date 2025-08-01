@@ -151,7 +151,6 @@ class CommandSession:
                     self._logger.info("Command completed.")
                 elif self._state == CommandStatusEnumType.FAILED:
                     self._logger.warning(f"Command failed (reason={self._reason}, msg={self._msg})")
-                self.cancel(block=False)
                 return (ok, self._state, self._reason, self._msg)
 
             self._logger.info("Command is executing...")
@@ -246,11 +245,8 @@ class CommandSession:
                 self._session_started = False
                 return
 
-            predicate = (
-                lambda: (
-                    self._state == CommandStatusEnumType.CANCELED
-                    and self._reason == CommandStatusReasonEnumType.CANCELED
-                )
+            predicate = lambda: (
+                (self._state == CommandStatusEnumType.CANCELED and self._reason == CommandStatusReasonEnumType.CANCELED)
                 or self.is_terminal()
             )
 
@@ -320,8 +316,6 @@ class CommandSession:
             self._state = status.commandStatus
             self._reason = status.commandStatusReason
             self._msg = status.logMessage
-            if self._state == CommandStatusEnumType.COMPLETED or self._state == CommandStatusEnumType.FAILED:
-                get_event_processor().submit(lambda: self.cancel(block=False), priority=LOW)
             self._lock.notify_all()
         for status_cb in self._status_callbacks[status.commandStatus]:
             get_event_processor().submit(status_cb, status)
