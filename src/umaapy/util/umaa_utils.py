@@ -4,7 +4,46 @@ import logging
 _logger = logging.getLogger(__name__)
 
 
-# Utility functions to validate UMAA DDS topic sample types and derive topic names.
+from umaapy.umaa_types import (
+    UMAA_Common_Measurement_NumericGUID as NumericGUID,
+    UMAA_Common_IdentifierType as IdentifierType,
+)
+
+
+class HashableNumericGUID(NumericGUID):
+    __slots__ = ()
+
+    def __init__(self, base: NumericGUID):
+        super().__init__(value=base.value)
+
+    def __eq__(self, other: NumericGUID) -> bool:
+        if not isinstance(other, NumericGUID):
+            return NotImplemented
+        return tuple(self.value) == tuple(other.value)
+
+    def __hash__(self) -> int:
+        return hash(tuple(self.value))
+
+    def to_umaa(self) -> NumericGUID:
+        return NumericGUID(value=self.value)
+
+
+class HashableIdentifierType(IdentifierType):
+    __slots__ = ()
+
+    def __init__(self, base: IdentifierType):
+        super().__init__(id=HashableNumericGUID(base.id), parentID=HashableNumericGUID(base.parentID))
+
+    def __eq__(self, other: IdentifierType) -> bool:
+        if not isinstance(other, IdentifierType):
+            return NotImplemented
+        return self.id == other.id and self.parentID == other.parentID
+
+    def __hash__(self) -> int:
+        return hash((self.id, self.parentID))
+
+    def to_umaa(self) -> IdentifierType:
+        return IdentifierType(id=self.id.to_umaa(), parentID=self.parentID.to_umaa())
 
 
 def validate_command(command: Any) -> bool:

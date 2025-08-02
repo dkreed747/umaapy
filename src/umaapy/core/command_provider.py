@@ -55,7 +55,7 @@ class CommandProvider(dds.DataReaderListener):
             f"destination.parentID = &hex({guid_to_hex(source.parentID)})"
             f" AND destination.id = &hex({guid_to_hex(source.id)})"
         )
-        self._cmd_reader: dds.DataReader = get_configurator().get_filtered_reader(
+        self._cmd_reader, _ = get_configurator().get_filtered_reader(
             cmd_type,
             filter_expr,
             profile_category=UmaaQosProfileCategory.COMMAND,
@@ -102,19 +102,15 @@ class CommandProvider(dds.DataReaderListener):
                 if self._active_command_future is None:
                     continue
                 try:
-                    keyed_sample = reader.key_value(info.instance_handle)
-                    if self._active_command.command.sessionID != keyed_sample.sessionID:
+                    if self._active_command.command.sessionID != reader.key_value(info.instance_handle).sessionID:
                         continue
-                except dds.InvalidArgumentError:
-                    # Instance already reclaimed
-                    self._logger.debug("Instance already reclaimed by DDS")
+                except Exception as e:
+                    self._logger.error(f"Unable to get key data for disposed sample this is likely a QoS issue - {e}")
+                    continue
+
                 # Cancel and cleanup based on instance state
                 match info.state.instance_state:
-                    case dds.InstanceState.NOT_ALIVE_DISPOSED:
-                        self._active_command_future.cancel()
-                        self._active_command.cancel()
-                        self._active_command_future = None
-                    case dds.InstanceState.NOT_ALIVE_NO_WRITERS:
+                    case dds.InstanceState.NOT_ALIVE_DISPOSED | dds.InstanceState.NOT_ALIVE_NO_WRITERS:
                         self._active_command_future.cancel()
                         self._active_command.cancel()
                         self._active_command_future = None

@@ -1,4 +1,4 @@
-from typing import Type, Optional, List
+from typing import Type, Optional, List, Tuple
 from enum import Enum
 import threading
 import rti.connextdds as dds
@@ -203,7 +203,7 @@ class DDSConfigurator:
         filter_parameters: Optional[List[str]] = None,
         topic_name: str = None,
         profile_category: UmaaQosProfileCategory = UmaaQosProfileCategory.REPORT,
-    ) -> dds.DataReader:
+    ) -> Tuple[dds.DataReader, dds.ContentFilteredTopic]:
         """
         Create a content-filtered DataReader using the given filter expression.
 
@@ -212,7 +212,7 @@ class DDSConfigurator:
         :param filter_parameters: Optional list of filter parameters.
         :param topic_name:        Optional override of the topic name.
         :param profile_category:  QoS profile enum to select reader settings.
-        :return:                  A configured DataReader on a ContentFilteredTopic.
+        :return:                  A tuple of the configured DataReader and its associated content-filtered topic.
         """
         profile = self.PROFILE_DICT[profile_category]
         topic = self.get_topic(data_type, topic_name)
@@ -225,7 +225,7 @@ class DDSConfigurator:
                 topic, filter_name, dds.Filter(filter_expression, parameters=filter_parameters or [])
             )
         # Return a DataReader bound to the filtered topic
-        return dds.DataReader(self.subscriber, cft, qos=reader_qos)
+        return dds.DataReader(self.subscriber, cft, qos=reader_qos), cft
 
     @classmethod
     def reset(cls) -> None:

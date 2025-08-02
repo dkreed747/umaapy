@@ -33,7 +33,7 @@ def test_load_reader_writer():
 def test_filtered_reader():
     qos_file = str(files("umaapy.resource") / "umaapy_qos_lib.xml")
     config_boy = DDSConfigurator(0, qos_file)
-    gpr_filtered_reader = config_boy.get_filtered_reader(
+    gpr_filtered_reader, _ = config_boy.get_filtered_reader(
         UMAA_SA_GlobalPoseStatus_GlobalPoseReportType, "depth = %0", ["42.0"]
     )
     gpr_writer = config_boy.get_writer(UMAA_SA_GlobalPoseStatus_GlobalPoseReportType)

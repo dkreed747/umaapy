@@ -50,7 +50,7 @@ class ReportConsumer(dds.DataReaderListener):
             ]
         )
         # Create a filtered DDS DataReader for the report type
-        self._reader: dds.DataReader = get_configurator().get_filtered_reader(report_type, filter_expression)
+        self._reader, _ = get_configurator().get_filtered_reader(report_type, filter_expression)
 
         # Store the most recent valid report sample
         self._latest_report: Optional[Any] = None

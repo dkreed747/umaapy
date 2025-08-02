@@ -68,7 +68,7 @@
 
                 <reader_data_lifecycle>
                     <autopurge_disposed_instances_delay>
-                        <sec>DURATION_ZERO_SEC</sec>
+                        <sec>DURATION_INFINITE_SEC</sec>
                         <nanosec>DURATION_ZERO_NSEC</nanosec>
                     </autopurge_disposed_instances_delay>
 
