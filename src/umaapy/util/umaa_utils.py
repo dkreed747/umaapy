@@ -1,5 +1,7 @@
-from typing import Any, Type
+from typing import Any, Type, Sequence, List, Set, Dict, Tuple
 import logging
+import inspect
+from enum import Enum, auto
 
 _logger = logging.getLogger(__name__)
 
@@ -10,210 +12,236 @@ from umaapy.umaa_types import (
 )
 
 
+class UMAAConcept(Enum):
+    COMMAND = (auto(), ["timeStamp", "source", "destination", "sessionID"])
+    ACKNOWLEDGEMENT = (auto(), ["timeStamp", "source", "sessionID", "command"])
+    STATUS = (
+        auto(),
+        [
+            "timeStamp",
+            "source",
+            "sessionID",
+            "commandStatus",
+            "commandStatusReason",
+            "logMessage",
+        ],
+    )
+    EXECUTION_STATUS = (auto(), ["timeStamp", "source", "sessionID"])
+    REPORT = (auto(), ["timeStamp", "source"])
+    GENERALIZATION = (auto(), ["specializationTopic", "specializationID", "specializationTimestamp"])
+    SPECIALIZATION = (auto(), ["specializationReferenceID", "specializationReferenceTimestamp"])
+    LARGE_SET = (auto(), ["setID", "updateElementID", "updateElementTimestamp", "size"])
+    LARGE_SET_ELEMENT = (auto(), ["element", "setID", "elementID", "elementTimestamp"])
+    LARGE_LIST = (auto(), ["listID", "updateElementID", "updateElementTimestamp", "startingElementID", "size"])
+    LARGE_LIST_ELEMENT = (
+        auto(),
+        [
+            "element",
+            "listID",
+            "elementID",
+            "elementTimestamp",
+            "nextElementID",
+        ],
+    )
+
+    def __init__(self, numeric_value: int, attrs: List[str]):
+        self.attrs = attrs
+
+
 class HashableNumericGUID(NumericGUID):
+    """
+    A hashable wrapper for NumericGUID that allows instances to be used
+    in hashed collections (e.g. as dict keys or set members).
+
+    Inherits from NumericGUID and implements equality and hashing based
+    on the GUID's raw value.
+    """
+
     __slots__ = ()
 
     def __init__(self, base: NumericGUID):
+        """
+        Initialize a HashableNumericGUID from an existing NumericGUID.
+
+        :param base: The NumericGUID instance to wrap.
+        :type base: NumericGUID
+        """
         super().__init__(value=base.value)
 
-    def __eq__(self, other: NumericGUID) -> bool:
+    def __eq__(self, other: Any) -> bool:
+        """
+        Compare two GUIDs for equality based on their tuple value.
+
+        :param other: The object to compare against.
+        :type other: Any
+        :return: True if other is a NumericGUID with the same value;
+                 NotImplemented if other isn't a NumericGUID.
+        :rtype: bool
+        """
         if not isinstance(other, NumericGUID):
             return NotImplemented
         return tuple(self.value) == tuple(other.value)
 
     def __hash__(self) -> int:
+        """
+        Compute a hash from the GUID's tuple value.
+
+        :return: The hash of the underlying GUID tuple.
+        :rtype: int
+        """
         return hash(tuple(self.value))
 
     def to_umaa(self) -> NumericGUID:
+        """
+        Convert back to a standard (non-hashable) NumericGUID.
+
+        :return: A new NumericGUID instance with the same value.
+        :rtype: NumericGUID
+        """
         return NumericGUID(value=self.value)
 
 
 class HashableIdentifierType(IdentifierType):
+    """
+    A hashable wrapper for IdentifierType, making it usable in hashed
+    collections by delegating to HashableNumericGUID for its IDs.
+
+    Inherits from IdentifierType and implements equality and hashing.
+    """
+
     __slots__ = ()
 
     def __init__(self, base: IdentifierType):
-        super().__init__(id=HashableNumericGUID(base.id), parentID=HashableNumericGUID(base.parentID))
+        """
+        Initialize a HashableIdentifierType from an existing IdentifierType.
 
-    def __eq__(self, other: IdentifierType) -> bool:
+        :param base: The IdentifierType instance to wrap.
+        :type base: IdentifierType
+        """
+        super().__init__(
+            id=HashableNumericGUID(base.id),
+            parentID=HashableNumericGUID(base.parentID),
+        )
+
+    def __eq__(self, other: Any) -> bool:
+        """
+        Compare two IdentifierTypes for equality based on their IDs.
+
+        :param other: The object to compare against.
+        :type other: Any
+        :return: True if other is an IdentifierType with the same id
+                 and parentID; NotImplemented if other isn't IdentifierType.
+        :rtype: bool
+        """
         if not isinstance(other, IdentifierType):
             return NotImplemented
         return self.id == other.id and self.parentID == other.parentID
 
     def __hash__(self) -> int:
+        """
+        Compute a hash from the tuple of this IdentifierType's id and parentID.
+
+        :return: The hash of (id, parentID).
+        :rtype: int
+        """
         return hash((self.id, self.parentID))
 
     def to_umaa(self) -> IdentifierType:
-        return IdentifierType(id=self.id.to_umaa(), parentID=self.parentID.to_umaa())
+        """
+        Convert back to a standard (non-hashable) IdentifierType.
+
+        :return: A new IdentifierType with the same id and parentID.
+        :rtype: IdentifierType
+        """
+        return IdentifierType(
+            id=self.id.to_umaa(),
+            parentID=self.parentID.to_umaa(),
+        )
 
 
-def validate_command(command: Any) -> bool:
+def find_fields(
+    obj: Any, fields: Sequence[str], verbose: bool = False, *, context: str = None, _visited: Set[int] = None
+) -> Dict[str, Type]:
     """
-    Validate that the given object has the required fields for a UMAA command sample.
+    Recursively find all attributes whose names are in `fields`.
+    Returns a list of attribute-access paths (dot-separated), e.g.
+      ["MyType.field1.nestedField2", "MyType.other.nestedField2"]
+    If nothing matches, returns [].
 
-    Checks for:
-      - timeStamp
-      - source
-      - destination
-      - sessionID
+    :param obj:     The object or class to inspect.
+    :param fields:  A sequence of attribute names to look for.
+    :param verbose: If True, log a debug each time we find one.
+    :param context: Internal—dot-path to this object (rooted at its type name).
+    :param _visited: Internal—set of object ids to avoid infinite loops.
+    """
+    if _visited is None:
+        _visited = set()
+    oid = id(obj)
+    if oid in _visited:
+        return []
+    _visited.add(oid)
 
-    :param command: An instance of a DDS command data type.
-    :type command: Any
+    # initialize context to the root object's type name
+    if context is None:
+        context = "self"
+
+    matches: Dict[str, Type] = {}
+    if all(hasattr(obj, f) for f in fields):
+        if verbose:
+            _logger.debug(f"{context} has all required fields {fields}")
+        matches[context] = type(obj)
+
+    for name, val in inspect.getmembers(obj):
+        if (
+            name.startswith("_")
+            or name.startswith("type_support")
+            or isinstance(val, (str, bytes, int, float, bool, type(None)))
+        ):
+            continue
+        full_path = f"{context}.{name}"
+        matches.update(find_fields(val, fields, verbose, context=full_path, _visited=_visited))
+    return matches
+
+
+def validate_umaa_type(umaa_type: Any, concept: UMAAConcept, verbose: bool = False) -> bool:
+    """
+    Validate that the given object has the required fields for a UMAA special concept.
+
+    :param umaa_type: An instance of a DDS UMAA data type.
+    :type umaa_type: Any
+    :param concept: UMAA Concept to validate against
+    :type concept: UMAAConcept
+    :param verbose: If True, log errors and debug info.
+    :type verbose: bool
     :return: True if the object has all required fields, False otherwise.
     :rtype: bool
     """
-    if not hasattr(command, "timeStamp"):
-        _logger.error(f"'{type(command).__name__}' missing required 'timeStamp' field")
-        return False
+    name = type(umaa_type).__name__
 
-    if not hasattr(command, "source"):
-        _logger.error(f"'{type(command).__name__}' missing required 'source' field")
-        return False
+    for attr in concept.attrs:
+        if not hasattr(umaa_type, attr):
+            if verbose:
+                _logger.error(f"'{name}' missing required '{attr}' field for a UMAA {concept.name}")
+            return False
 
-    if not hasattr(command, "destination"):
-        _logger.error(f"'{type(command).__name__}' missing required 'destination' field")
-        return False
-
-    if not hasattr(command, "sessionID"):
-        _logger.error(f"'{type(command).__name__}' missing required 'sessionID' field")
-        return False
-
-    _logger.debug(f"'{type(command).__name__}' is a valid UMAA command type")
+    if verbose:
+        _logger.debug(f"'{name}' has all required fields for a UMAA {concept.name}")
     return True
 
 
-def validate_ack(ack: Any) -> bool:
-    """
-    Validate that the given object has the required fields for a UMAA command acknowledgement.
+def umaa_concepts_on_type(umaa_type: Type, verbose: bool = False) -> Dict[UMAAConcept, Dict[str, Type]]:
+    results: Dict[UMAAConcept, Dict[str, Type]] = {
+        concept: find_fields(umaa_type(), concept.attrs, verbose) for concept in UMAAConcept
+    }
 
-    Checks for:
-      - timeStamp
-      - source
-      - sessionID
-      - command
+    for path in results[UMAAConcept.COMMAND]:
+        results[UMAAConcept.EXECUTION_STATUS].pop(path)
+        results[UMAAConcept.REPORT].pop(path)
 
-    :param ack: An instance of a DDS acknowledgement data type.
-    :type ack: Any
-    :return: True if the object has all required fields, False otherwise.
-    :rtype: bool
-    """
-    if not hasattr(ack, "timeStamp"):
-        _logger.error(f"'{type(ack).__name__}' missing required 'timeStamp' field")
-        return False
+    for path in results[UMAAConcept.EXECUTION_STATUS]:
+        results[UMAAConcept.REPORT].pop(path)
 
-    if not hasattr(ack, "source"):
-        _logger.error(f"'{type(ack).__name__}' missing required 'source' field")
-        return False
-
-    if not hasattr(ack, "sessionID"):
-        _logger.error(f"'{type(ack).__name__}' missing required 'sessionID' field")
-        return False
-
-    if not hasattr(ack, "command"):
-        _logger.error(f"'{type(ack).__name__}' missing required 'command' field")
-        return False
-
-    _logger.debug(f"'{type(ack).__name__}' is a valid UMAA command acknowledgement type")
-    return True
-
-
-def validate_status(status: Any) -> bool:
-    """
-    Validate that the given object has the required fields for a UMAA command status update.
-
-    Checks for:
-      - timeStamp
-      - source
-      - sessionID
-      - commandStatus
-      - commandStatusReason
-      - logMessage
-
-    :param status: An instance of a DDS status update data type.
-    :type status: Any
-    :return: True if the object has all required fields, False otherwise.
-    :rtype: bool
-    """
-    if not hasattr(status, "timeStamp"):
-        _logger.error(f"'{type(status).__name__}' missing required 'timeStamp' field")
-        return False
-
-    if not hasattr(status, "source"):
-        _logger.error(f"'{type(status).__name__}' missing required 'source' field")
-        return False
-
-    if not hasattr(status, "sessionID"):
-        _logger.error(f"'{type(status).__name__}' missing required 'sessionID' field")
-        return False
-
-    if not hasattr(status, "commandStatus"):
-        _logger.error(f"'{type(status).__name__}' missing required 'commandStatus' field")
-        return False
-
-    if not hasattr(status, "commandStatusReason"):
-        _logger.error(f"'{type(status).__name__}' missing required 'commandStatusReason' field")
-        return False
-
-    if not hasattr(status, "logMessage"):
-        _logger.error(f"'{type(status).__name__}' missing required 'logMessage' field")
-        return False
-
-    _logger.debug(f"'{type(status).__name__}' is a valid UMAA status type")
-    return True
-
-
-def validate_execution_status(execution_status: Any) -> bool:
-    """
-    Validate that the given object has the required fields for a UMAA execution status update.
-
-    Checks for:
-      - timeStamp
-      - source
-      - sessionID
-
-    :param execution_status: An instance of a DDS execution status data type.
-    :type execution_status: Any
-    :return: True if the object has all required fields, False otherwise.
-    :rtype: bool
-    """
-    if not hasattr(execution_status, "timeStamp"):
-        _logger.error(f"'{type(execution_status).__name__}' missing required 'timeStamp' field")
-        return False
-
-    if not hasattr(execution_status, "source"):
-        _logger.error(f"'{type(execution_status).__name__}' missing required 'source' field")
-        return False
-
-    if not hasattr(execution_status, "sessionID"):
-        _logger.error(f"'{type(execution_status).__name__}' missing required 'sessionID' field")
-        return False
-
-    _logger.debug(f"'{type(execution_status).__name__}' is a valid UMAA execution status type")
-    return True
-
-
-def validate_report(report: Any) -> bool:
-    """
-    Validate that the given object has the required fields for a UMAA report sample.
-
-    Checks for:
-      - timeStamp
-      - source
-
-    :param report: An instance of a DDS report data type.
-    :type report: Any
-    :return: True if the object has all required fields, False otherwise.
-    :rtype: bool
-    """
-    if not hasattr(report, "timeStamp"):
-        _logger.error(f"'{type(report).__name__}' missing required 'timeStamp' field")
-        return False
-
-    if not hasattr(report, "source"):
-        _logger.error(f"'{type(report).__name__}' missing required 'source' field")
-        return False
-
-    _logger.debug(f"'{type(report).__name__}' is a valid UMAA report type")
-    return True
+    return results
 
 
 def topic_from_type(umaa_type: Type) -> str:

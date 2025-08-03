@@ -8,7 +8,7 @@ from umaapy import get_configurator, get_event_processor
 from umaapy.util.umaa_command import UmaaCommand, UmaaCommandFactory
 from umaapy.util.event_processor import EventProcessor, LOW, MEDIUM, HIGH
 from umaapy.util.dds_configurator import UmaaQosProfileCategory
-from umaapy.util.umaa_utils import validate_command
+from umaapy.util.umaa_utils import UMAAConcept, validate_umaa_type
 from umaapy.util.uuid_factory import guid_to_hex
 
 from umaapy.umaa_types import (
@@ -46,7 +46,7 @@ class CommandProvider(dds.DataReaderListener):
         self._cmd_priority = cmd_priority
 
         # Validate command type by instantiating and checking UMAA compliance
-        if not validate_command(cmd_type()):
+        if not validate_umaa_type(cmd_type(), UMAAConcept.COMMAND):
             raise RuntimeError(f"'{cmd_type.__name__.split('_')[-1]}' is not a valid UMAA command.")
         self._cmd_type: Type = cmd_type
 
