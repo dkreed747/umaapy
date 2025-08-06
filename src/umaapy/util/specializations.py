@@ -1,10 +1,10 @@
-from typing import Type, Dict, override, Any
+from typing import Type, Dict, override, Any, List
 import importlib
 import inspect
 import re
 from threading import Condition
 
-from umaapy.util.umaa_utils import UMAAConcept, validate_umaa_type, HashableNumericGUID
+from umaapy.util.umaa_utils import UMAAConcept, validate_umaa_obj, HashableNumericGUID
 
 import rti.connextdds as dds
 
@@ -17,7 +17,7 @@ def get_specializations_from_generalization(
     (using your regex), then returns a dict mapping the short name (after the
     last underscore) to the actual class object.
     """
-    if not validate_umaa_type(generalization(), UMAAConcept.GENERALIZATION, verbose=True):
+    if not validate_umaa_obj(generalization(), UMAAConcept.GENERALIZATION):
         raise RuntimeError(f"Invalid generalization type '{generalization.__name__}'")
 
     mod = importlib.import_module(module_name)
@@ -29,7 +29,7 @@ def get_specializations_from_generalization(
         if cls.__module__ != module_name or not regex.match(name):
             continue
 
-        if not validate_umaa_type(cls(), UMAAConcept.SPECIALIZATION, verbose=True):
+        if not validate_umaa_obj(cls(), UMAAConcept.SPECIALIZATION):
             raise RuntimeError(f"Invalid specialization type '{cls.__name__}'")
 
         short = name.split("_")[-1]
@@ -63,9 +63,12 @@ class SpecializationReaderDecorator(dds.DataReaderListener):
                     if type(data).__name__ == self._generalization_reader.type_name:
                         # received generalization
                         # self._buffers[reader.topic_name][]
+                        # If specialization in buffer queue that matches this call parent
+
                         pass
                     else:
                         # received specialization
+                        # if generalization in buffer that matches specialization call parent
                         pass
                 else:
                     pass

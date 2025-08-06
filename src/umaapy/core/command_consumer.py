@@ -14,7 +14,7 @@ from umaapy.util.reader_listener import ReaderListener
 from umaapy import get_configurator, get_event_processor
 from umaapy.util.umaa_utils import (
     UMAAConcept,
-    validate_umaa_type,
+    validate_umaa_obj,
     HashableNumericGUID,
     HashableIdentifierType,
 )
@@ -88,13 +88,13 @@ class CommandConsumer(dds.DataWriterListener):
         super().__init__()
         self.source_id: IdentifierType = source_id
 
-        if not validate_umaa_type(command_type(), UMAAConcept.COMMAND):
+        if not validate_umaa_obj(command_type(), UMAAConcept.COMMAND):
             raise RuntimeError(f"'{command_type.__name__.split('_')[-1]}' is not a valid UMAA command.")
-        if not validate_umaa_type(ack_type(), UMAAConcept.ACKNOWLEDGEMENT):
+        if not validate_umaa_obj(ack_type(), UMAAConcept.ACKNOWLEDGEMENT):
             raise RuntimeError(f"'{ack_type.__name__.split('_')[-1]}' is not a valid UMAA acknowledgement.")
-        if not validate_umaa_type(status_type(), UMAAConcept.STATUS):
+        if not validate_umaa_obj(status_type(), UMAAConcept.STATUS):
             raise RuntimeError(f"'{status_type.__name__.split('_')[-1]}' is not a valid UMAA status.")
-        if execution_status_type and not validate_umaa_type(execution_status_type(), UMAAConcept.EXECUTION_STATUS):
+        if execution_status_type and not validate_umaa_obj(execution_status_type(), UMAAConcept.EXECUTION_STATUS):
             raise RuntimeError(f"'{execution_status_type.__name__.split('_')[-1]}' is not a valid UMAA exec status.")
 
         self.name = command_type.__name__.split("CommandType")[0].split("_")[-1] + self.__class__.__name__

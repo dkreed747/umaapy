@@ -2,6 +2,8 @@ from typing import Any, Type, Sequence, List, Set, Dict, Tuple
 import logging
 import inspect
 from enum import Enum, auto
+from dataclasses import dataclass, field
+from collections import deque
 
 _logger = logging.getLogger(__name__)
 
@@ -10,42 +12,6 @@ from umaapy.umaa_types import (
     UMAA_Common_Measurement_NumericGUID as NumericGUID,
     UMAA_Common_IdentifierType as IdentifierType,
 )
-
-
-class UMAAConcept(Enum):
-    COMMAND = (auto(), ["timeStamp", "source", "destination", "sessionID"])
-    ACKNOWLEDGEMENT = (auto(), ["timeStamp", "source", "sessionID", "command"])
-    STATUS = (
-        auto(),
-        [
-            "timeStamp",
-            "source",
-            "sessionID",
-            "commandStatus",
-            "commandStatusReason",
-            "logMessage",
-        ],
-    )
-    EXECUTION_STATUS = (auto(), ["timeStamp", "source", "sessionID"])
-    REPORT = (auto(), ["timeStamp", "source"])
-    GENERALIZATION = (auto(), ["specializationTopic", "specializationID", "specializationTimestamp"])
-    SPECIALIZATION = (auto(), ["specializationReferenceID", "specializationReferenceTimestamp"])
-    LARGE_SET = (auto(), ["setID", "updateElementID", "updateElementTimestamp", "size"])
-    LARGE_SET_ELEMENT = (auto(), ["element", "setID", "elementID", "elementTimestamp"])
-    LARGE_LIST = (auto(), ["listID", "updateElementID", "updateElementTimestamp", "startingElementID", "size"])
-    LARGE_LIST_ELEMENT = (
-        auto(),
-        [
-            "element",
-            "listID",
-            "elementID",
-            "elementTimestamp",
-            "nextElementID",
-        ],
-    )
-
-    def __init__(self, numeric_value: int, attrs: List[str]):
-        self.attrs = attrs
 
 
 class HashableNumericGUID(NumericGUID):
@@ -159,91 +125,6 @@ class HashableIdentifierType(IdentifierType):
         )
 
 
-def find_fields(
-    obj: Any, fields: Sequence[str], verbose: bool = False, *, context: str = None, _visited: Set[int] = None
-) -> Dict[str, Type]:
-    """
-    Recursively find all attributes whose names are in `fields`.
-    Returns a list of attribute-access paths (dot-separated), e.g.
-      ["MyType.field1.nestedField2", "MyType.other.nestedField2"]
-    If nothing matches, returns [].
-
-    :param obj:     The object or class to inspect.
-    :param fields:  A sequence of attribute names to look for.
-    :param verbose: If True, log a debug each time we find one.
-    :param context: Internal—dot-path to this object (rooted at its type name).
-    :param _visited: Internal—set of object ids to avoid infinite loops.
-    """
-    if _visited is None:
-        _visited = set()
-    oid = id(obj)
-    if oid in _visited:
-        return []
-    _visited.add(oid)
-
-    # initialize context to the root object's type name
-    if context is None:
-        context = "self"
-
-    matches: Dict[str, Type] = {}
-    if all(hasattr(obj, f) for f in fields):
-        if verbose:
-            _logger.debug(f"{context} has all required fields {fields}")
-        matches[context] = type(obj)
-
-    for name, val in inspect.getmembers(obj):
-        if (
-            name.startswith("_")
-            or name.startswith("type_support")
-            or isinstance(val, (str, bytes, int, float, bool, type(None)))
-        ):
-            continue
-        full_path = f"{context}.{name}"
-        matches.update(find_fields(val, fields, verbose, context=full_path, _visited=_visited))
-    return matches
-
-
-def validate_umaa_type(umaa_type: Any, concept: UMAAConcept, verbose: bool = False) -> bool:
-    """
-    Validate that the given object has the required fields for a UMAA special concept.
-
-    :param umaa_type: An instance of a DDS UMAA data type.
-    :type umaa_type: Any
-    :param concept: UMAA Concept to validate against
-    :type concept: UMAAConcept
-    :param verbose: If True, log errors and debug info.
-    :type verbose: bool
-    :return: True if the object has all required fields, False otherwise.
-    :rtype: bool
-    """
-    name = type(umaa_type).__name__
-
-    for attr in concept.attrs:
-        if not hasattr(umaa_type, attr):
-            if verbose:
-                _logger.error(f"'{name}' missing required '{attr}' field for a UMAA {concept.name}")
-            return False
-
-    if verbose:
-        _logger.debug(f"'{name}' has all required fields for a UMAA {concept.name}")
-    return True
-
-
-def umaa_concepts_on_type(umaa_type: Type, verbose: bool = False) -> Dict[UMAAConcept, Dict[str, Type]]:
-    results: Dict[UMAAConcept, Dict[str, Type]] = {
-        concept: find_fields(umaa_type(), concept.attrs, verbose) for concept in UMAAConcept
-    }
-
-    for path in results[UMAAConcept.COMMAND]:
-        results[UMAAConcept.EXECUTION_STATUS].pop(path)
-        results[UMAAConcept.REPORT].pop(path)
-
-    for path in results[UMAAConcept.EXECUTION_STATUS]:
-        results[UMAAConcept.REPORT].pop(path)
-
-    return results
-
-
 def topic_from_type(umaa_type: Type) -> str:
     """
     Derive a DDS topic name from a UMAA type class by replacing underscores with '::'.
@@ -255,3 +136,91 @@ def topic_from_type(umaa_type: Type) -> str:
     """
     # Convert C++-style nested names to :: separators
     return umaa_type.__name__.replace("_", "::")
+
+
+class UMAAConcept(Enum):
+    COMMAND = (auto(), {"timeStamp", "source", "destination", "sessionID"})
+    ACKNOWLEDGEMENT = (auto(), {"timeStamp", "source", "sessionID", "command"})
+    STATUS = (
+        auto(),
+        {
+            "timeStamp",
+            "source",
+            "sessionID",
+            "commandStatus",
+            "commandStatusReason",
+            "logMessage",
+        },
+    )
+    EXECUTION_STATUS = (auto(), {"timeStamp", "source", "sessionID"})
+    REPORT = (auto(), {"timeStamp", "source"})
+    GENERALIZATION = (auto(), {"specializationTopic", "specializationID", "specializationTimestamp"})
+    SPECIALIZATION = (auto(), {"specializationReferenceID", "specializationReferenceTimestamp"})
+    LARGE_SET = (auto(), {"setID", "updateElementID", "updateElementTimestamp", "size"})
+    LARGE_SET_ELEMENT = (auto(), {"element", "setID", "elementID", "elementTimestamp"})
+    LARGE_LIST = (auto(), {"listID", "updateElementID", "updateElementTimestamp", "startingElementID", "size"})
+    LARGE_LIST_ELEMENT = (
+        auto(),
+        {
+            "element",
+            "listID",
+            "elementID",
+            "elementTimestamp",
+            "nextElementID",
+        },
+    )
+
+    def __init__(self, _, attrs: Set[str]):
+        self.attrs: Set[str] = attrs
+
+
+@dataclass
+class UMAAFieldInfo:
+    classifications: Set[UMAAConcept] = field(default_factory=set)
+    python_type: Type[Any] = None
+
+
+def validate_umaa_obj(obj: Any, concept: UMAAConcept) -> bool:
+    """
+    Validate that the given object has the required fields for a UMAA special concept.
+
+    :param obj: An instance of a DDS UMAA data type.
+    :type obj: Any
+    :param concept: UMAA Concept to validate against
+    :type concept: UMAAConcept
+    :return: True if the object has all required fields, False otherwise.
+    :rtype: bool
+    """
+    return concept.attrs.issubset(set(vars(obj).keys()))
+
+
+def classify_obj_by_umaa(obj: Any) -> Dict[Tuple[str, ...], UMAAFieldInfo]:
+    """
+    Traverse `obj`’s instance‐attributes and at each path pick only the
+    *most restrictive* UMAAConcept(s)—i.e. those whose attr_set is not
+    a strict subset of any other matching concept’s attr_set.
+    """
+    cmap: Dict[Tuple[str, ...], UMAAFieldInfo] = {}
+    seen_ids = set()
+    queue = deque([((), obj)])
+
+    while queue:
+        path, current = queue.popleft()
+        oid = id(current)
+        if oid in seen_ids:
+            continue
+        seen_ids.add(oid)
+
+        if not hasattr(current, "__dict__"):
+            continue
+
+        matched = [c for c in UMAAConcept if c.attrs.issubset(set(vars(current).keys()))]
+        if matched:
+            winners = {c for c in matched if not any(c.attrs.issubset(other.attrs) and c != other for other in matched)}
+            cmap[path] = UMAAFieldInfo(classifications=winners, python_type=type(current))
+
+        for name, val in vars(current).items():
+            if hasattr(val, "__dict__"):
+                queue.append((path + (name,), val))
+
+    return cmap

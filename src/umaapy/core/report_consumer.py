@@ -5,7 +5,7 @@ import rti.connextdds as dds
 from umaapy.util.event_processor import EventProcessor, Command, MEDIUM
 from umaapy.util.dds_configurator import ReaderListenerEventType
 from umaapy import get_event_processor, get_configurator
-from umaapy.util.umaa_utils import UMAAConcept, validate_umaa_type
+from umaapy.util.umaa_utils import UMAAConcept, validate_umaa_obj
 from umaapy.util.uuid_factory import guid_to_hex
 
 from umaapy.umaa_types import UMAA_Common_IdentifierType as IdentifierType
@@ -33,7 +33,7 @@ class ReportConsumer(dds.DataReaderListener):
     ):
         super().__init__()
         # Ensure the report type adheres to UMAA specifications
-        if not validate_umaa_type(report_type(), UMAAConcept.REPORT):
+        if not validate_umaa_obj(report_type(), UMAAConcept.REPORT):
             raise RuntimeError(f"'{report_type.__name__.split('_')[-1]}' is not a valid UMAA report.")
 
         # Store configuration

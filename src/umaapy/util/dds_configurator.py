@@ -3,7 +3,7 @@ from enum import Enum
 import threading
 import rti.connextdds as dds
 
-from umaapy.util.umaa_utils import topic_from_type
+from umaapy.util.umaa_utils import topic_from_type, umaa_concepts_on_type
 
 
 class UmaaQosProfileCategory(Enum):
@@ -226,6 +226,17 @@ class DDSConfigurator:
             )
         # Return a DataReader bound to the filtered topic
         return dds.DataReader(self.subscriber, cft, qos=reader_qos), cft
+
+    def get_umaa_reader(self, data_type: Type) -> dds.DataReader:
+        type_umaa_concepts = umaa_concepts_on_type(data_type)
+
+    def get_filtered_umaa_reader(
+        self, data_type: Type, filter_expression: str, filter_parameters: Optional[List[str]] = None
+    ) -> dds.DataReader:
+        pass
+
+    def get_umaa_writer(self, data_type: Type) -> dds.DataWriter:
+        pass
 
     @classmethod
     def reset(cls) -> None:
