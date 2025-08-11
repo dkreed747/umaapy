@@ -1,9 +1,36 @@
-from typing import Type, Optional, List, Tuple
+from typing import Type, Optional, List, Tuple, Any, Dict, Iterable
 from enum import Enum
 import threading
 import rti.connextdds as dds
+import importlib
+import inspect
 
-from umaapy.util.umaa_utils import topic_from_type, umaa_concepts_on_type
+from umaapy.util.umaa_utils import (
+    topic_from_type,
+    classify_obj_by_umaa,
+    UMAAConcept,
+    classify_obj_by_umaa,
+    get_specializations_from_generalization,
+)
+
+from umaapy.util.multi_topic_support import (
+    CombinedSample,
+    UmaaReaderAdapter,
+    UmaaFilteredReaderAdapter,
+    UmaaWriterAdapter,
+)
+from umaapy.util.multi_topic_reader import ReaderNode
+from umaapy.util.multi_topic_writer import WriterNode, TopLevelWriter
+from umaapy.util.multi_topic_reader_decorators import (
+    GenSpecReader,
+    LargeSetReader,
+    LargeListReader,
+)
+from umaapy.util.multi_topic_writer_decorators import (
+    GenSpecWriter,
+    LargeSetWriter,
+    LargeListWriter,
+)
 
 
 class UmaaQosProfileCategory(Enum):
@@ -228,15 +255,43 @@ class DDSConfigurator:
         return dds.DataReader(self.subscriber, cft, qos=reader_qos), cft
 
     def get_umaa_reader(self, data_type: Type) -> dds.DataReader:
-        type_umaa_concepts = umaa_concepts_on_type(data_type)
+        """
+        Build a UMAA-aware reader graph for `data_type` and return an adapter that
+        mimics a DataReader (set_listener(listener, status_mask), read/take, read_data/take_data).
+        """
+
+        root_reader = self.get_reader(data_type)
+        root_node = ReaderNode(root_reader, key_fn=self._mt_new_key, new_base_fn=self._mt_wrap_base)
+        self._mt_augment_reader_node(root_node, data_type)
+        return UmaaReaderAdapter(root_node, root_reader)
 
     def get_filtered_umaa_reader(
         self, data_type: Type, filter_expression: str, filter_parameters: Optional[List[str]] = None
     ) -> dds.DataReader:
-        pass
+        """
+        Same as get_umaa_reader, but the ROOT is bound to a ContentFilteredTopic.
+        Child element/spec readers are left unfiltered (typical UMAA pattern).
+        """
+
+        root_reader, cft = self.get_filtered_reader(
+            data_type, filter_expression=filter_expression, filter_parameters=filter_parameters
+        )
+        root_node = ReaderNode(root_reader, key_fn=self._mt_new_key, new_base_fn=self._mt_wrap_base)
+        self._mt_augment_reader_node(root_node, data_type)
+        return UmaaFilteredReaderAdapter(root_node, root_reader, cft)
 
     def get_umaa_writer(self, data_type: Type) -> dds.DataWriter:
-        pass
+        """
+        Build a UMAA-aware writer graph and return a writer adapter that feels like a DataWriter.
+        Exposes .new() and .write(builder) plus set_listener(listener, status_mask).
+        """
+
+        root_writer = self.get_writer(data_type)
+        root_node = WriterNode(root_writer)
+        self._mt_augment_writer_node(root_node, data_type)
+
+        top = TopLevelWriter(root_node, base_factory=data_type)
+        return UmaaWriterAdapter(root_node, top, root_writer)
 
     @classmethod
     def reset(cls) -> None:
@@ -257,3 +312,166 @@ class DDSConfigurator:
             if hasattr(inst, "_initialized"):
                 delattr(inst, "_initialized")
             inst.__init__(inst._domain_id, inst._qos_file)
+
+    def _mt_new_key(self, sample: object) -> int:
+        # Per-sample unique key; decorators map IDs -> parent key internally.
+        return id(sample)
+
+    def _mt_wrap_base(self, sample):
+        return CombinedSample(base=sample)
+
+    def _mt_classify_type(self, umaa_type: Type):
+        """Return classify_obj_by_ummaa map for a default-constructed instance."""
+        return classify_obj_by_umaa(umaa_type())
+
+    def _mt_obj_at_path(self, root_obj: object, path: Tuple[str, ...]) -> object:
+        cur = root_obj
+        for seg in path:
+            cur = getattr(cur, seg)
+        return cur
+
+    def _mt_parent_cls_for_path(self, umaa_type: Type, path: Tuple[str, ...]) -> Type:
+        """Type of the object that directly owns the last path segment (metadata field)."""
+        if not path:
+            return umaa_type
+        parent_obj = self._mt_obj_at_path(umaa_type(), path[:-1])
+        return type(parent_obj)
+
+    def _mt_attr_base_from_metadata_field(self, field_name: str) -> Optional[str]:
+        for suffix in ("SetMetadata", "ListMetadata"):
+            if field_name.endswith(suffix):
+                return field_name[: -len(suffix)]
+        return None
+
+    def _mt_resolve_collection_element_type(self, parent_cls: Type, attr_base: str, kind: str) -> Type:
+        """
+        Resolve element type by UMAA naming rule:
+        <ParentMessageName><CapitalizedAttributeName><Set|List>Element
+        """
+
+        mod = importlib.import_module("umaapy.umaa_types")
+        parent_name = parent_cls.__name__
+        cap_attr = attr_base[:1].upper() + attr_base[1:]
+        suffix = "SetElement" if kind == "set" else "ListElement"
+        candidate = f"{parent_name}{cap_attr}{suffix}"
+        try:
+            return getattr(mod, candidate)
+        except AttributeError as e:
+            raise RuntimeError(f"Could not resolve {kind} element type '{candidate}' in umaapy.umaa_types") from e
+
+    def _mt_iter_generalizations(self, umaa_type: Type) -> List[Tuple[Tuple[str, ...], Type, Dict[str, Type]]]:
+        """[(path, generalization_type, {specTopicShort: specType, ...}), ...]"""
+        cmap = self._mt_classify_type(umaa_type)
+        out = []
+        for path, finfo in cmap.items():
+            if UMAAConcept.GENERALIZATION in finfo.classifications:
+                gen_t = finfo.python_type
+                specs = get_specializations_from_generalization(gen_t)  # {'RouteObjectiveType': <class ...>, ...}
+                out.append((path, gen_t, specs))
+        return out
+
+    def _mt_iter_large_sets(self, umaa_type: Type) -> List[Tuple[str, Type]]:
+        """[(attr_base_name, element_type), ...]"""
+        cmap = self._mt_classify_type(umaa_type)
+        root_inst = umaa_type()
+        out: List[Tuple[str, Type]] = []
+        for path, finfo in cmap.items():
+            if UMAAConcept.LARGE_SET in finfo.classifications and path:
+                field = path[-1]
+                base = self._mt_attr_base_from_metadata_field(field)
+                if not base:
+                    continue
+                parent_cls = self._mt_parent_cls_for_path(umaa_type, path)
+                elem_t = self._mt_resolve_collection_element_type(parent_cls, base, "set")
+                out.append((base, elem_t))
+        return out
+
+    def _mt_iter_large_lists(self, umaa_type: Type) -> List[Tuple[str, Type]]:
+        """[(attr_base_name, element_type), ...]"""
+        cmap = self._mt_classify_type(umaa_type)
+        root_inst = umaa_type()
+        out: List[Tuple[str, Type]] = []
+        for path, finfo in cmap.items():
+            if UMAAConcept.LARGE_LIST in finfo.classifications and path:
+                field = path[-1]
+                base = self._mt_attr_base_from_metadata_field(field)
+                if not base:
+                    continue
+                parent_cls = self._mt_parent_cls_for_path(umaa_type, path)
+                elem_t = self._mt_resolve_collection_element_type(parent_cls, base, "list")
+                out.append((base, elem_t))
+        return out
+
+    def _mt_make_genspec_reader(self, path: Tuple[str, ...]):
+        """
+        Prefer a path-aware GenSpecReader if available; otherwise fall back to the plain one.
+        This lets you keep Gen/Spec fields nested (e.g., ('objective',)) without changing the
+        decorator import sites if you add path support later.
+        """
+        try:
+            if "attr_path" in inspect.signature(GenSpecReader.__init__).parameters:
+                return GenSpecReader(attr_path=path)
+        except Exception:
+            pass
+        return GenSpecReader()
+
+    def _mt_make_genspec_writer(self, path: Tuple[str, ...]):
+        try:
+            if "attr_path" in inspect.signature(GenSpecWriter.__init__).parameters:
+                return GenSpecWriter(attr_path=path, resolve_child_by_topic_name=lambda t: t)
+        except Exception:
+            pass
+        return GenSpecWriter(resolve_child_by_topic_name=lambda t: t)
+
+    def _mt_augment_reader_node(self, node, umaa_type: Type):
+        """Attach UMAA reader decorators + recursively wire children based on classification."""
+        # Large Sets
+        for set_name, elem_t in self._mt_iter_large_sets(umaa_type):
+            node.register_decorator(set_name, LargeSetReader(set_name), required=True)
+            elem_reader = self.get_reader(elem_t)
+            child = ReaderNode(elem_reader, key_fn=self._mt_new_key, new_base_fn=self._mt_wrap_base)
+            node.attach_child(set_name, topic_from_type(elem_t), child)
+            self._mt_augment_reader_node(child, elem_t)
+
+        # Large Lists
+        for list_name, elem_t in self._mt_iter_large_lists(umaa_type):
+            node.register_decorator(list_name, LargeListReader(list_name), required=True)
+            elem_reader = self.get_reader(elem_t)
+            child = ReaderNode(elem_reader, key_fn=self._mt_new_key, new_base_fn=self._mt_wrap_base)
+            node.attach_child(list_name, topic_from_type(elem_t), child)
+            self._mt_augment_reader_node(child, elem_t)
+
+        for path, gen_t, specs in self._mt_iter_generalizations(umaa_type):
+            node.register_decorator("gen_spec", self._mt_make_genspec_reader(path), required=True)
+            for topic_short, spec_t in specs.items():
+                spec_reader = self.get_reader(spec_t)
+                child = ReaderNode(spec_reader, key_fn=self._mt_new_key, new_base_fn=self._mt_wrap_base)
+                node.attach_child("gen_spec", topic_short or topic_from_type(spec_t), child)
+                self._mt_augment_reader_node(child, spec_t)
+
+    def _mt_augment_writer_node(self, node, umaa_type: Type):
+        """Attach UMAA writer decorators + recursively wire children based on classification."""
+        # Large Sets
+        for set_name, elem_t in self._mt_iter_large_sets(umaa_type):
+            node.register_decorator(set_name, LargeSetWriter(set_name))
+            elem_writer = self.get_writer(elem_t)
+            child = WriterNode(elem_writer)
+            node.attach_child(set_name, topic_from_type(elem_t), child)
+            self._mt_augment_writer_node(child, elem_t)
+
+        # Large Lists
+        for list_name, elem_t in self._mt_iter_large_lists(umaa_type):
+            node.register_decorator(list_name, LargeListWriter(list_name))
+            elem_writer = self.get_writer(elem_t)
+            child = WriterNode(elem_writer)
+            node.attach_child(list_name, topic_from_type(elem_t), child)
+            self._mt_augment_writer_node(child, elem_t)
+
+        # Generalization / Specializations
+        for path, gen_t, specs in self._mt_iter_generalizations(umaa_type):
+            node.register_decorator("gen_spec", self._mt_make_genspec_writer(path))
+            for topic_short, spec_t in specs.items():
+                spec_writer = self.get_writer(spec_t)
+                child = WriterNode(spec_writer)
+                node.attach_child("gen_spec", topic_short or topic_from_type(spec_t), child)
+                self._mt_augment_writer_node(child, spec_t)

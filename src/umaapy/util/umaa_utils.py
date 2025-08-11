@@ -1,6 +1,9 @@
 from typing import Any, Type, Sequence, List, Set, Dict, Tuple
 import logging
 import inspect
+import importlib
+import inspect
+import re
 from enum import Enum, auto
 from dataclasses import dataclass, field
 from collections import deque
@@ -224,3 +227,32 @@ def classify_obj_by_umaa(obj: Any) -> Dict[Tuple[str, ...], UMAAFieldInfo]:
                 queue.append((path + (name,), val))
 
     return cmap
+
+
+def get_specializations_from_generalization(
+    generalization: Type, module_name: str = "umaapy.umaa_types"
+) -> Dict[str, Type]:
+    """
+    Scans `module_name` for all classes matching *generalization's* base-type
+    (using your regex), then returns a dict mapping the short name (after the
+    last underscore) to the actual class object.
+    """
+    if not validate_umaa_obj(generalization(), UMAAConcept.GENERALIZATION):
+        raise RuntimeError(f"Invalid generalization type '{generalization.__name__}'")
+
+    mod = importlib.import_module(module_name)
+    base = generalization.__name__.split("_")[-1]
+    regex = re.compile(rf"^UMAA_.+(?<!_){re.escape(base)}$")
+
+    out: Dict[str, Type] = {}
+    for name, cls in inspect.getmembers(mod, inspect.isclass):
+        if cls.__module__ != module_name or not regex.match(name):
+            continue
+
+        if not validate_umaa_obj(cls(), UMAAConcept.SPECIALIZATION):
+            raise RuntimeError(f"Invalid specialization type '{cls.__name__}'")
+
+        short = name.split("_")[-1]
+        out[short] = cls
+
+    return out
