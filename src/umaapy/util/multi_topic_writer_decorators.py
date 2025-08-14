@@ -79,7 +79,9 @@ class GenSpecWriter(WriterDecorator):
         if getattr(spec, "specializationReferenceID") == NIL_GUID:
             setattr(spec, "specializationReferenceID", generate_guid())
 
-        child.publish(CombinedBuilder(base=spec, collections_by_path=builder.collections_by_path))
+        # child.publish(CombinedBuilder(base=spec, collections_by_path=builder.collections_by_path))
+        print(f"Gen/Spec attr_path: {self.attr_path}")
+        child.publish(builder.spawn_child(spec, self.attr_path))
 
         sid, sts = self._spec_identity(spec)
         self._bind_generalization(gen_obj, topic, sid, sts)
@@ -101,13 +103,9 @@ class LargeSetWriter(WriterDecorator):
         self._children = getattr(self, "_children", {})
 
     def _meta_struct(self, parent: Any) -> Any:
-        ps = get_at_path(parent, self.attr_path)
-        if ps is None:
-            raise RuntimeError(f"Cannot get attribute at {self.attr_path} on {type(parent).__name__}")
-        metadata = getattr(ps, f"{self.set_name}SetMetadata", None)
+        metadata = get_at_path(parent, self.attr_path)
         if metadata is None:
-            raise RuntimeError(f"Cannot find {self.set_name}SetMetadata on {type(ps).__name__}")
-
+            raise RuntimeError(f"Cannot get get metadata at {self.attr_path} on {type(parent).__name__}")
         return metadata
 
     def _get_set_id(self, meta: Any) -> Any:
@@ -137,12 +135,15 @@ class LargeSetWriter(WriterDecorator):
 
         set_id = getattr(meta, "setID")
 
-        items = builder.collections_at(self.attr_path).get(self.set_name, None)
+        print(f"Dump builder: {builder.collections_by_path.items()}")
+
+        items = builder.collections_at(self.attr_path[:-1]).get(self.set_name, None)
 
         if items is None:
             return
 
         items = items.to_runtime()
+        print(f"Large Set Publish Items: {items.to_runtime()}")
         setattr(meta, "size", int(len(items)))
 
         if len(self._children) != 1:
@@ -180,12 +181,9 @@ class LargeListWriter(WriterDecorator):
         self._children = getattr(self, "_children", {})
 
     def _meta_struct(self, parent: Any) -> Any:
-        ps = get_at_path(parent, self.attr_path)
-        if ps is None:
-            raise RuntimeError(f"Cannot get attribute at {self.attr_path} on {type(parent).__name__}")
-        metadata = getattr(ps, f"{self.set_name}ListMetadata", None)
+        metadata = get_at_path(parent, self.attr_path)
         if metadata is None:
-            raise RuntimeError(f"Cannot find {self.set_name}ListMetadata on {type(ps).__name__}")
+            raise RuntimeError(f"Cannot get metadata at {self.attr_path} on {type(parent).__name__}")
         return metadata
 
     def _get_list_id(self, meta: Any) -> Any:
@@ -226,12 +224,18 @@ class LargeListWriter(WriterDecorator):
 
         list_id = getattr(meta, "listID")
 
-        items = builder.collections_at(self.attr_path).get(self.list_name, None)
+        print(f"List name: {self.list_name}")
+        print(f"List attr_path: {self.attr_path}")
+        print(f"Dump builder: {builder.collections_by_path.items()}")
+
+        items = builder.collections_at(self.attr_path[:-1]).get(self.list_name, None)
 
         if items is None:
+            print("Large List Items is None")
             return
 
         items = items.to_runtime()
+        print(f"Large List Publish Items: {items}")
 
         setattr(meta, "size", int(len(items)))
         if len(self._children) != 1:

@@ -4,7 +4,7 @@ import rti.connextdds as dds
 
 from umaapy import get_configurator
 from umaapy.util.uuid_factory import generate_guid
-from umaapy.util.multi_topic_support import UmaaWriterAdapter, UmaaReaderAdapter
+from umaapy.util.multi_topic_support import UmaaWriterAdapter, UmaaReaderAdapter, OverlayView
 
 from umaapy.umaa_types import (
     UMAA_MM_ObjectiveExecutorControl_ObjectiveExecutorCommandType as ObjectiveExecutorCommandType,
@@ -70,8 +70,9 @@ def test_large_list_writer_sets_metadata_visible_on_base_after_roundtrip():
         time.sleep(0.05)
 
     assert cs is not None
-    v = cs.view
+    v: OverlayView = cs.view
     # Check that the waypoint list is present and has the correct elements
+    print(f"Dump view: {v._collections.items()}")
     waypoints = v.objective.collections.get("waypoints", [])
     assert len(waypoints) == 2
     assert waypoints[0].element.name == "Waypoint 1"

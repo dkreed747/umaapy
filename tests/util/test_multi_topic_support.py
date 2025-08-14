@@ -71,7 +71,7 @@ def test_combinedsample_overlay_and_collections():
         pass
 
     spec = Spec()
-    cs3 = cs2.add_overlay_at(("objective",), spec)
+    cs3 = cs2.add_overlay_at(spec, ("objective",))
     v = cs3.view
     # accessing objective should yield an overlay view
     assert isinstance(getattr(v, "objective"), OverlayView)
@@ -82,12 +82,12 @@ def test_combinedbuilder_per_node_bags_and_spawn_child():
         pass
 
     b = CombinedBuilder(Base())
-    coll = b.ensure_collection_at((), "missionPlan", "set")
+    coll = b.ensure_collection_at("missionPlan", "set", ())
     assert coll is b.collections["missionPlan"]
 
     # Spawn a child for an element path
     eid = mk_guid(99)
-    child = b.spawn_child(path_for_set_element("missionPlan", eid), base_obj=object())
+    child = b.spawn_child(object(), path=path_for_set_element("missionPlan", eid))
     # child inherits collections registered under that path (none yet)
     assert child.collections == {}
 

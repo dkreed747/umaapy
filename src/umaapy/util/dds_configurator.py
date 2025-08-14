@@ -413,7 +413,7 @@ class DDSConfigurator:
                     continue
                 parent_cls = self._mt_parent_type_for_path(umaa_type, tuple(path))
                 elem_t = self._mt_resolve_collection_element_type(parent_cls, base, "set")
-                out.append((base, elem_t))
+                out.append((path, base, elem_t))
         return out
 
     def _mt_iter_large_lists(self, umaa_type: Type) -> List[Tuple[str, Type]]:
@@ -434,7 +434,7 @@ class DDSConfigurator:
                     continue
                 parent_cls = self._mt_parent_type_for_path(umaa_type, tuple(path))
                 elem_t = self._mt_resolve_collection_element_type(parent_cls, base, "list")
-                out.append((base, elem_t))
+                out.append((path, base, elem_t))
         return out
 
     def _is_set_element_type(self, t) -> bool:
@@ -452,9 +452,8 @@ class DDSConfigurator:
         attached_any = False
 
         # Large Sets
-        for set_name, elem_t in self._mt_iter_large_sets(t):
-            attr_path = self._default_attr_path_for(t)
-            node.register_decorator(set_name, LargeSetReader(set_name, attr_path=attr_path))
+        for path, set_name, elem_t in self._mt_iter_large_sets(t):
+            node.register_decorator(set_name, LargeSetReader(set_name, attr_path=path))
             attached_any = True
 
             elem_reader = self.get_reader(elem_t)
@@ -468,9 +467,8 @@ class DDSConfigurator:
             self._mt_augment_reader_node(child, elem_t)
 
         # Large Lists
-        for list_name, elem_t in self._mt_iter_large_lists(t):
-            attr_path = self._default_attr_path_for(t)
-            node.register_decorator(list_name, LargeListReader(list_name, attr_path=attr_path))
+        for path, list_name, elem_t in self._mt_iter_large_lists(t):
+            node.register_decorator(list_name, LargeListReader(list_name, attr_path=path))
             attached_any = True
 
             elem_reader = self.get_reader(elem_t)
@@ -505,12 +503,11 @@ class DDSConfigurator:
 
     def _mt_augment_writer_node(self, node: WriterNode, t: Type) -> None:
         # Large Sets
-        for set_name, elem_t in self._mt_iter_large_sets(t):
+        for path, set_name, elem_t in self._mt_iter_large_sets(t):
             topic = topic_from_type(elem_t)
-            attr_path = ("element",) if set_name == "objectives" else ()
             node.register_decorator(
                 set_name,
-                LargeSetWriter(set_name, attr_path=attr_path),
+                LargeSetWriter(set_name, attr_path=path),
             )
             elem_writer = self.get_writer(elem_t)
             child = WriterNode(elem_writer)
@@ -518,12 +515,11 @@ class DDSConfigurator:
             self._mt_augment_writer_node(child, elem_t)
 
         # Large Lists
-        for list_name, elem_t in self._mt_iter_large_lists(t):
+        for path, list_name, elem_t in self._mt_iter_large_lists(t):
             topic = topic_from_type(elem_t)
-            attr_path = ("element",) if list_name == "waypoints" else ()
             node.register_decorator(
                 list_name,
-                LargeListWriter(list_name, attr_path=attr_path),
+                LargeListWriter(list_name, attr_path=path),
             )
             elem_writer = self.get_writer(elem_t)
             child = WriterNode(elem_writer)

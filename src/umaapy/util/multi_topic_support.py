@@ -196,6 +196,12 @@ class OverlayView:
         self._path = tuple(path)
 
     def __getattr__(self, name: str) -> Any:
+        if name == "collections":
+            return self._collections
+
+        if name in self._collections:
+            return self._collections[name]
+
         sub_path = self._path + (name,)
         if sub_path in self._overlays_by_path:
             base_sub = getattr(self._base, name) if hasattr(self._base, name) else None
@@ -208,9 +214,6 @@ class OverlayView:
 
         if hasattr(self._base, name):
             return getattr(self._base, name)
-
-        if name in self._collections:
-            return self._collections[name]
 
         raise AttributeError(name)
 
@@ -251,19 +254,13 @@ class CombinedSample:
             path=(),
         )
 
-    def with_overlay(self, overlay: Any) -> "CombinedSample":
-        """Return a new CombinedSample with a top-level overlay set."""
-        return CombinedSample(
-            base=self.base,
-            collections=self.collections,
-            overlays_by_path=self.overlays_by_path.update({(), overlay}),
-        )
-
     def clone_with_collections(self, updates: Mapping[str, Any]) -> "CombinedSample":
         """Return a new CombinedSample with updated local collections bag."""
+        new_collections = dict(self.collections)
+        new_collections.update(updates)
         return CombinedSample(
             base=self.base,
-            collections=self.collections.update(updates),
+            collections=new_collections,
             overlays_by_path=self.overlays_by_path,
         )
 
@@ -283,10 +280,12 @@ class CombinedSample:
         CombinedSample
             A new CombinedSample with the overlay registered.
         """
+        new_overlays = dict(self.overlays_by_path)
+        new_overlays[tuple(path)] = overlay_obj
         return CombinedSample(
             base=self.base,
             collections=self.collections,
-            overlays_by_path=self.overlays_by_path.update({tuple(path): overlay_obj}),
+            overlays_by_path=new_overlays,
         )
 
 
@@ -308,9 +307,6 @@ class CombinedBuilder:
     base: Any
     overlays_by_path: Dict[Tuple[Any, ...], Any] = field(default_factory=dict)
     collections_by_path: Dict[Tuple[Any, ...], Dict[str, Any]] = field(default_factory=dict)
-
-    def __post_init__(self):
-        setattr(self.base, "collections", self.collections_by_path.setdefault((), {}))
 
     def ensure_collection_at(self, name: str, kind: str, path: Sequence[str] = ()) -> Any:
         """
@@ -402,8 +398,8 @@ class CombinedBuilder:
         for k, v in self.collections_by_path.items():
             if len(k) >= len(p) and tuple(k[: len(p)]) == p:
                 rel = tuple(k[len(p) :])
-                if rel:
-                    child_collections_by_path[rel] = v
+                # if rel:
+                child_collections_by_path[rel] = v
 
         child_overlays: Dict[Tuple[Any, ...], Any] = {}
         for k, v in self.overlays_by_path.items():
@@ -416,6 +412,10 @@ class CombinedBuilder:
             collections_by_path=child_collections_by_path,
             overlays_by_path=child_overlays,
         )
+
+    def __getattr__(self, name):
+        if name == "collections":
+            return self.collections_by_path.setdefault((), {})
 
 
 class BuilderEditView:
@@ -532,10 +532,9 @@ class ElementView:
         sub = self._path + (name,)
         if sub in self._combined.overlays_by_path:
             base_sub = getattr(self._elem, name) if hasattr(self._elem, name) else None
-            overlay_sub = self._combined.overlays_by_path[sub]
+            # overlay_sub = self._combined.overlays_by_path[sub]
             return OverlayView(
                 base_sub,
-                overlay_sub,
                 self._combined.collections,
                 overlays_by_path=self._combined.overlays_by_path,
                 path=sub,
@@ -550,10 +549,9 @@ class ElementView:
             sub2 = self._path + ("element", name)
             if sub2 in self._combined.overlays_by_path:
                 base_sub = getattr(elem, name) if hasattr(elem, name) else None
-                overlay_sub = self._combined.overlays_by_path[sub2]
+                # overlay_sub = self._combined.overlays_by_path[sub2]
                 return OverlayView(
                     base_sub,
-                    overlay_sub,
                     self._combined.collections,
                     overlays_by_path=self._combined.overlays_by_path,
                     path=sub2,
@@ -1012,12 +1010,20 @@ class UmaaWriterAdapter:
         if auto_init_collections:
             cmap_base = classify_obj_by_umaa(b.base)
             for path, finfo in cmap_base.items():
-                if UMAAConcept.LARGE_SET in finfo.classifications:
-                    name = path[-1][: -len("SetMetadata")]
-                    b.ensure_collection_at(name, "set", path)
+                # if UMAAConcept.LARGE_SET in finfo.classifications:
+                #     name = path[-1][: -len("SetMetadata")]
+                #     b.ensure_collection_at(name, "set", path)
+                # if UMAAConcept.LARGE_LIST in finfo.classifications:
+                #     name = path[-1][: -len("ListMetadata")]
+                #     b.ensure_collection_at(name, "list", path)
                 if UMAAConcept.LARGE_LIST in finfo.classifications:
                     name = path[-1][: -len("ListMetadata")]
-                    b.ensure_collection_at(name, "list", path)
+                    parent_path = path[:-1]  # attach at the generalization node
+                    b.ensure_collection_at(name, "list", parent_path)
+                if UMAAConcept.LARGE_SET in finfo.classifications:
+                    name = path[-1][: -len("SetMetadata")]
+                    parent_path = path[:-1]
+                    b.ensure_collection_at(name, "set", parent_path)
 
         if spec_at is not None and spec_type is not None:
             spec = spec_type()

@@ -115,7 +115,14 @@ class GenSpecReader(ReaderDecorator):
         if comb is None:
             return ()
 
-        new_comb = comb.add_overlay_at(self.attr_path, spec)
+        try:
+            if hasattr(assembled, "collections") and assembled.collections:
+                for cname, cval in assembled.collections.items():
+                    comb.collections[cname] = cval
+        except Exception:
+            pass
+
+        new_comb = comb.add_overlay_at(spec, self.attr_path)
         node._combined_by_key[parent_key] = new_comb
         return (AssemblySignal(parent_key, complete=True),)
 
@@ -132,8 +139,7 @@ class LargeSetReader(ReaderDecorator):
         self._elem_combined_by_set: Dict[Any, Dict[Any, CombinedSample]] = {}
 
     def _meta_struct(self, parent_sample: Any) -> Any:
-        ps = get_at_path(parent_sample, self.attr_path)
-        return getattr(ps, f"{self.set_name}SetMetadata")
+        return get_at_path(parent_sample, self.attr_path)
 
     def _meta_ids(self, parent_sample: Any) -> Tuple[Any, Optional[Any], Optional[Any]]:
         m = self._meta_struct(parent_sample)
@@ -260,8 +266,7 @@ class LargeListReader(ReaderDecorator):
         self._elem_combined_by_list: Dict[Any, Dict[Any, CombinedSample]] = {}
 
     def _meta_struct(self, parent_sample: Any) -> Any:
-        ps = get_at_path(parent_sample, self.attr_path)
-        return getattr(ps, f"{self.list_name}ListMetadata")
+        return get_at_path(parent_sample, self.attr_path)
 
     def _meta_ids(self, parent_sample: Any) -> Tuple[Any, Optional[Any], Optional[Any], Optional[Any]]:
         m = self._meta_struct(parent_sample)
