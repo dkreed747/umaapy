@@ -142,8 +142,8 @@ def topic_from_type(umaa_type: Type) -> str:
 
 
 class UMAAConcept(Enum):
-    COMMAND = (auto(), {"timeStamp", "source", "destination", "sessionID"})
-    ACKNOWLEDGEMENT = (auto(), {"timeStamp", "source", "sessionID", "command"})
+    COMMAND = (auto(), {"timeStamp", "source", "destination", "sessionID"}, {"source", "destination", "sessionID"})
+    ACKNOWLEDGEMENT = (auto(), {"timeStamp", "source", "sessionID", "command"}, {"source", "sessionID"})
     STATUS = (
         auto(),
         {
@@ -154,14 +154,19 @@ class UMAAConcept(Enum):
             "commandStatusReason",
             "logMessage",
         },
+        {"source", "sessionID"},
     )
-    EXECUTION_STATUS = (auto(), {"timeStamp", "source", "sessionID"})
-    REPORT = (auto(), {"timeStamp", "source"})
-    GENERALIZATION = (auto(), {"specializationTopic", "specializationID", "specializationTimestamp"})
-    SPECIALIZATION = (auto(), {"specializationReferenceID", "specializationReferenceTimestamp"})
-    LARGE_SET = (auto(), {"setID", "updateElementID", "updateElementTimestamp", "size"})
-    LARGE_SET_ELEMENT = (auto(), {"element", "setID", "elementID", "elementTimestamp"})
-    LARGE_LIST = (auto(), {"listID", "updateElementID", "updateElementTimestamp", "startingElementID", "size"})
+    EXECUTION_STATUS = (auto(), {"timeStamp", "source", "sessionID"}, {"source", "sessionID"})
+    REPORT = (auto(), {"timeStamp", "source"}, {"source"})
+    GENERALIZATION = (auto(), {"specializationTopic", "specializationID", "specializationTimestamp"}, set())
+    SPECIALIZATION = (
+        auto(),
+        {"specializationReferenceID", "specializationReferenceTimestamp"},
+        {"specializationReferenceID"},
+    )
+    LARGE_SET = (auto(), {"setID", "updateElementID", "updateElementTimestamp", "size"}, set())
+    LARGE_SET_ELEMENT = (auto(), {"element", "setID", "elementID", "elementTimestamp"}, {"setID", "elementID"})
+    LARGE_LIST = (auto(), {"listID", "updateElementID", "updateElementTimestamp", "startingElementID", "size"}, set())
     LARGE_LIST_ELEMENT = (
         auto(),
         {
@@ -171,10 +176,12 @@ class UMAAConcept(Enum):
             "elementTimestamp",
             "nextElementID",
         },
+        {"listID", "elementID"},
     )
 
-    def __init__(self, _, attrs: Set[str]):
+    def __init__(self, _, attrs: Set[str], keys: Set[str]) -> None:
         self.attrs: Set[str] = attrs
+        self.keys: Set[str] = keys
 
 
 @dataclass

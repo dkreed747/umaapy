@@ -1,97 +1,112 @@
-# multi_topic_writer.py
+"""
+UMAA writer graph runtime: WriterNode, WriterDecorator base, and TopLevelWriter.
+
+A `WriterNode` wraps one RTI `DataWriter`. Decorators attached to the node publish
+any child topics (specializations, set/list elements) *before* the node writes its
+base object, ensuring all metadata links are correct.
+"""
+
 from __future__ import annotations
 
-from collections import OrderedDict
-from typing import Any, Dict, Optional, Callable
-
-import rti.connextdds as dds
+from typing import Any, Dict
+import logging
 
 from umaapy.util.multi_topic_support import CombinedBuilder
 
+import rti.connextdds as dds
+
+_logger = logging.getLogger(__name__)
+
 
 class WriterDecorator:
-    """Base class for UMAA writer decorators.
+    """
+    Base class for writer-side UMAA decorators.
 
-    A writer decorator:
-      - Splits a CombinedBuilder into writes on its child WriterNodes (e.g., spec or list/set elements),
-      - Mutates the builder.base metadata/generalization to point at what it wrote (IDs/timestamps/links),
-      - Does NOT write the base; WriterNode writes its base AFTER all decorators publish.
+    Implement `publish(node, builder)` to:
+    - publish any dependent child topics (e.g., specializations, set/list elements),
+    - set/validate metadata fields on `builder.base` (e.g., link markers),
+    - leave the base in a ready-to-write state for the node.
     """
 
-    name: str = "base"
+    name: str = ""
 
     def attach_children(self, **children: "WriterNode") -> None:
-        for _ in children.values():
-            if not isinstance(_, WriterNode):
-                raise TypeError("attach_children expects WriterNode instances")
-        if not hasattr(self, "_children"):
-            self._children: Dict[str, WriterNode] = {}
-        self._children.update(children)
+        """Receive child mapping (topic or alias -> WriterNode)."""
+        self._children = children
 
     def publish(self, node: "WriterNode", builder: CombinedBuilder) -> None:
-        """Implement UMAA-specific fan-out in subclasses."""
-        pass
+        """Publish dependent data and prepare the base; default is no-op."""
+        return
 
 
 class WriterNode:
-    """Owns ONE RTI DataWriter and zero or more UMAA writer decorators.
+    """
+    Writer graph node that wraps a single RTI `DataWriter`.
 
-    Publish order:
-      1) All decorators publish their children first (specializations, list/set elements, etc.),
-      2) Decorators update base metadata/generalization fields (IDs/timestamps/links),
-      3) This node writes its base to the writer.
-
-    Notes
-    -----
-    - Decorator order is registration order (insertion-ordered).
-    - If you need to skip writing base for a non-root node, set write_base=False.
+    Parameters
+    ----------
+    writer : dds.DataWriter
+        RTI data writer for this node.
     """
 
-    def __init__(self, writer: dds.DataWriter, *, write_base: bool = True) -> None:
+    def __init__(self, writer: dds.DataWriter) -> None:
         self.writer = writer
-        self._decorators: "OrderedDict[str, WriterDecorator]" = OrderedDict()
-        self._write_base = write_base
+        self._decorators: Dict[str, WriterDecorator] = {}
+        self._children: Dict[str, Dict[str, WriterNode]] = {}
 
-    def register_decorator(self, name: str, decorator: WriterDecorator) -> None:
-        decorator.name = name
-        self._decorators[name] = decorator
+    def register_decorator(self, role: str, decorator: WriterDecorator) -> None:
+        """Register a decorator under a role (e.g., 'gen_spec', 'waypoints')."""
+        decorator.name = role
+        self._decorators[role] = decorator
 
-    def attach_child(self, decorator_name: str, child_name: str, child: "WriterNode") -> None:
-        deco = self._decorators[decorator_name]
-        deco.attach_children(**{child_name: child})
+    def attach_child(self, role: str, child_name: str, child_node: "WriterNode") -> None:
+        """
+        Attach a child node for a given role and topic/alias.
+        """
+        bucket = self._children.setdefault(role, {})
+        bucket[child_name] = child_node
+        if role in self._decorators:
+            _logger.debug(
+                "Attaching child '%s' to '%s'", child_name.split("::")[-1], self.writer.topic_name.split("::")[-1]
+            )
+            self._decorators[role].attach_children(**bucket)
 
     def publish(self, builder: CombinedBuilder) -> None:
-        # First, let decorators publish children and mutate metadata/generalization on base
-        for deco in self._decorators.values():
+        """
+        Publish all dependent data via decorators, then write the base.
+
+        Decorators must publish children *before* base write, so by the time
+        we call `writer.write(builder.base)`, metadata links are complete.
+        """
+        for name, deco in self._decorators.items():
             deco.publish(self, builder)
-
-        # Finally, write the base for this node
-        if self._write_base:
-            self.writer.write(builder.base)
-
-    # Convenience if a decorator needs to write a one-off sample using THIS node's writer
-    def write_now(self, sample: Any) -> None:
-        self.writer.write(sample)
+        _logger.debug("WriterNode.publish: writing base object '%s'.", type(builder.base).__name__)
+        self.writer.write(builder.base)
 
 
 class TopLevelWriter:
-    """User-facing wrapper for a top-level UMAA type writer.
+    """
+    High-level wrapper for a writer tree. Provides `new()` and `write()`.
 
-    Usage:
-        root = WriterNode(cmd_writer)
-        obj_exec = TopLevelWriter(root, base_factory=idl.ObjectiveExecutorCommandType)
-        b = obj_exec.new()
-        ... fill b.collections and b.overlay ...
-        obj_exec.write(b)
+    Parameters
+    ----------
+    root : WriterNode
+        Root node of the writer graph.
+    base_factory : type or callable
+        Callable or type to produce a new base object for `new()`.
     """
 
-    def __init__(self, root: WriterNode, base_factory: Callable[[], Any]) -> None:
-        self.root = root
-        self.base_factory = base_factory
+    def __init__(self, root: WriterNode, base_factory: Any) -> None:
+        self._root = root
+        self._base_factory = base_factory
 
     def new(self) -> CombinedBuilder:
-        base = self.base_factory()
+        """Create a fresh `CombinedBuilder` with a new base object."""
+        base = self._base_factory() if callable(self._base_factory) else self._base_factory()
+        _logger.debug("TopLevelWriter.new: created base object '%s'", type(base).__name__)
         return CombinedBuilder(base=base)
 
     def write(self, builder: CombinedBuilder) -> None:
-        self.root.publish(builder)
+        """Publish a combined builder."""
+        _logger.debug("TopLevelWriter.write: publishing combined sample")
+        self._root.publish(builder)

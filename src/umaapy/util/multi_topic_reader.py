@@ -1,204 +1,283 @@
+"""
+UMAA reader graph runtime: ReaderNode, AssemblySignal, and ReaderDecorator base.
+
+A `ReaderNode` wraps a single RTI `DataReader`. Decorators attached to a node
+(e.g., generalization/specialization, large sets/lists) consume raw samples and
+emit assembled `CombinedSample` objects upwards when their completion rules are met.
+
+The graph supports arbitrary nesting: parents attach children per concept:
+- one-to-many specializations under a generalization (role "gen_spec")
+- element readers under large sets/lists (role = set/list logical name)
+"""
+
 from __future__ import annotations
 
-import threading
-from typing import Any, Callable, Dict, Iterable, List, Optional, Protocol
-
-
-import rti.connextdds as dds
-
+from dataclasses import dataclass
+from typing import Any, Callable, Dict, Iterable, Optional, Tuple, List
+import types
+import inspect
+import logging
 
 from umaapy.util.multi_topic_support import CombinedSample
 
+import rti.connextdds as dds
 
+_logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
 class AssemblySignal:
-    """Decorator -> Node message that a given key has reached 'complete' for this decorator."""
+    """
+    Signal returned by a decorator to indicate assembly progress at a node.
 
-    __slots__ = ("key", "complete")
+    Parameters
+    ----------
+    key : Any
+        The parent node's key for the in-progress assembled sample.
+    complete : bool
+        If True, the node should notify its parent that a complete combined sample is ready.
+    """
 
-    def __init__(self, key: Any, complete: bool = True) -> None:
-        self.key = key
-        self.complete = complete
+    key: Any
+    complete: bool = False
 
 
 class ReaderDecorator:
-    """Abstract base for UMAA-specific reader decorators.
+    """
+    Base class for reader-side UMAA decorators.
 
-    A decorator:
-      - Mutates the provided CombinedSample in-place (collections / overlay).
-      - Yields AssemblySignal when its UMAA atomic-completeness is satisfied for 'key'.
-      - Can buffer child/parent arrivals out-of-order.
+    Override `on_reader_data` to consume a base sample and optionally emit
+    completion signals. Override `on_child_assembled` to receive assembled
+    samples from child nodes (specializations, set/list elements).
     """
 
-    name: str = "base"
-    required: bool = True
-
-    # The node injects its child nodes via this dict (name -> ReaderNode)
-    children: Dict[str, "ReaderNode"]
+    name: str = ""
 
     def attach_children(self, **children: "ReaderNode") -> None:
-        if not hasattr(self, "children"):
-            self.children = {}
-        self.children.update(children)
+        """Receive child node mapping (topic or alias -> ReaderNode)."""
+        self.children = children
 
     def on_reader_data(
-        self, node: "ReaderNode", key: Any, combined: CombinedSample, sample: Any
+        self,
+        node: "ReaderNode",
+        key: Any,
+        combined: CombinedSample,
+        sample: Any,
     ) -> Iterable[AssemblySignal]:
-        """Handle a sample published on THIS node's topic (the base)."""
+        """Handle a base sample arriving at this node. Default: no-op."""
         return ()
 
     def on_child_assembled(
-        self, node: "ReaderNode", child_name: str, key: Any, assembled: CombinedSample
+        self,
+        node: "ReaderNode",
+        child_name: str,
+        key: Any,
+        assembled: CombinedSample,
     ) -> Iterable[AssemblySignal]:
-        """Handle an assembled sample from a CHILD node (e.g., set/list element, specialization)."""
+        """Handle a child node emitting an assembled sample. Default: no-op."""
         return ()
 
 
 class ReaderNode:
-    """A graph node that owns ONE RTI DataReader and zero or more UMAA reader decorators.
+    """
+    Reader graph node that wraps a single RTI `DataReader`.
 
-    Flow
-    ----
-    - RTI listener (or polling) pulls valid data samples from the DataReader.
-    - For each sample: key = key_fn(sample); combined = new_base_fn(sample)
-    - Each registered decorator processes the sample (and any buffered child data),
-      mutates `combined` and yields AssemblySignal when its own completeness is satisfied.
-    - When all REQUIRED decorators for 'key' have completed, the node emits `parent_notify(key, combined)`.
-
-    Threading
-    ---------
-    - RTI calls listener callbacks from internal threads. We guard state with a re-entrant lock.
-    - If you prefer polling, call `poll_once()` periodically instead of using listeners.
+    Parameters
+    ----------
+    reader : dds.DataReader
+        RTI reader for this node's topic.
+    key_fn : Callable[[Any], Any]
+        Function to derive a node-local assembly key from a raw sample (default: `id(sample)`).
+    parent_notify : Callable[[Any, CombinedSample | None, Any | None], None], optional
+        Callback invoked when this node completes an assembled combined sample **or**
+        when an invalid/dispose arrives (combined=None), supplying the root `SampleInfo`.
+    use_listener : bool, default True
+        If True, install an internal listener to poll automatically; otherwise,
+        an external adapter listener may drive polling on data-available.
     """
 
     def __init__(
         self,
         reader: dds.DataReader,
-        key_fn: Callable[[Any], Any],
-        new_base_fn: Callable[[Any], CombinedSample],
-        parent_notify: Optional[Callable[[Any, CombinedSample], None]] = None,
+        key_fn: Callable[[Any], Any] = id,
+        parent_notify: Optional[Callable[[Any, Optional[CombinedSample], Optional[object]], None]] = None,
         use_listener: bool = True,
     ) -> None:
         self.reader = reader
-        self.key_fn = key_fn
-        self.new_base_fn = new_base_fn
+        self._key_fn = key_fn
+        try:
+            self._key_fn_arity = len(inspect.signature(key_fn).parameters)
+        except Exception:
+            self._key_fn_arity = 1
         self.parent_notify = parent_notify
-
-        self.decorators: Dict[str, ReaderDecorator] = {}
-
-        # per-key coordination
-        self._complete_by_key: Dict[Any, Dict[str, bool]] = {}
+        self._decorators: Dict[str, ReaderDecorator] = {}
+        self._children: Dict[str, Dict[str, ReaderNode]] = {}
         self._combined_by_key: Dict[Any, CombinedSample] = {}
-
-        self._lock = threading.RLock()
+        self._info_by_key: Dict[Any, object] = {}
 
         if use_listener:
-            self._install_listener()
+            # Install a minimal internal listener that polls on data available.
+            class _L(dds.NoOpDataReaderListener):
+                def on_data_available(_self, _r):
+                    try:
+                        self.poll_once()
+                    except Exception:
+                        pass
 
-    def register_decorator(self, name: str, decorator: ReaderDecorator, required: bool = True) -> None:
-        """Attach a UMAA reader decorator to this node."""
-        decorator.name = name
-        decorator.required = required
-        self.decorators[name] = decorator
+            self.reader.set_listener(_L(), dds.StatusMask.DATA_AVAILABLE)
 
-    def attach_child(self, decorator_name: str, child_name: str, child_node: "ReaderNode") -> None:
-        """Let a decorator own a CHILD reader node and receive its assembled outputs."""
-        self.decorators[decorator_name].attach_children(**{child_name: child_node})
-        child_node.parent_notify = lambda key, combined: self._on_child_assembled(
-            decorator_name, child_name, key, combined
-        )
+    def register_decorator(self, role: str, decorator: ReaderDecorator, required: bool = True) -> None:
+        """Register a decorator under a role (e.g., 'gen_spec', 'waypoints')."""
+        if role in self._decorators:
+            _logger.debug(
+                f"Replacing decorator for role {role}: "
+                f"{type(self._decorators[role]).__name__} -> {type(decorator).__name__}"
+            )
+        decorator.name = role
+        _logger.debug(f"Registering decorator {decorator.name} for role {role}")
+        self._decorators[role] = decorator
 
-    def poll_once(self) -> int:
-        """Pull samples synchronously (alternative to listener). Returns count of processed valid samples."""
-        count = 0
-        for data in _yield_valid_data(self.reader):
-            self._process_reader_sample(data)
-            count += 1
-        return count
+        # If children were already attached for this role, wire them now.
+        bucket = self._children.get(role)
+        if bucket:
+            decorator.attach_children(**bucket)
 
-    def _install_listener(self) -> None:
-        node = self
+    def attach_child(self, role: str, child_name: str, child_node: "ReaderNode") -> None:
+        """
+        Attach a child node for a given role and topic/alias.
 
-        class _Listener(dds.NoOpDataReaderListener):
-            def on_data_available(self, reader: dds.DataReader) -> None:
-                for data in _yield_valid_data(reader):
-                    node._process_reader_sample(data)
+        The child's `parent_notify` is wired to call this node's decorators,
+        and when a completion occurs we bubble the root `SampleInfo` to our parent.
+        """
+        bucket = self._children.setdefault(role, {})
+        bucket[child_name] = child_node
 
-        self.reader.set_listener(_Listener(), dds.StatusMask.DATA_AVAILABLE)
+        def _child_ready(key: Any, assembled: Optional[CombinedSample], _info: Optional[object]) -> None:
+            # assembled must be a CombinedSample from the child; we pass it to the owning decorator(s)
+            if assembled is None:
+                return
+            for r, deco in self._decorators.items():
+                if r != role:
+                    continue
+                try:
+                    for sig in deco.on_child_assembled(self, child_name, key, assembled):
+                        if sig.complete and self.parent_notify is not None:
+                            info = self._info_by_key.get(sig.key)
+                            self.parent_notify(sig.key, self._combined_by_key.get(sig.key, assembled), info)
+                except Exception:
+                    _logger.exception(f"Decorator {deco.name} raised in on_child_assembled")
 
-    def _process_reader_sample(self, sample: Any) -> None:
-        key = self.key_fn(sample)
-        combined = self.new_base_fn(sample)
+        child_node.parent_notify = _child_ready
 
-        with self._lock:
-            self._combined_by_key[key] = combined
+        if role in self._decorators:
+            self._decorators[role].attach_children(**bucket)
 
-            # Let each decorator see the base sample
-            for deco in self.decorators.values():
-                for sig in deco.on_reader_data(self, key, combined, sample):
-                    self._mark_complete_and_maybe_emit(key, deco.name, sig.complete)
+    def has_decorators(self, role: Optional[str] = None) -> bool:
+        """
+        Return True if this node has any decorators (role is None),
+        or if a decorator is registered for the specific role.
+        """
+        if role is None:
+            return bool(self._decorators)
+        return role in self._decorators
 
-            # In case decorators completed earlier due to child-first buffering
-            self._maybe_emit(key)
+    def decorator_roles(self) -> tuple[str, ...]:
+        """Convenience: the set of decorator role names on this node."""
+        return tuple(self._decorators.keys())
 
-    def _on_child_assembled(self, decorator_name: str, child_name: str, key: Any, combined: CombinedSample) -> None:
-        """Child node bubbled an assembled sample; route only to the owning decorator."""
-        deco = self.decorators[decorator_name]
+    def _read_with_infos(self) -> Tuple[List[Any], List[object]]:
+        """
+        Fetch samples and infos from the underlying reader, trying common RTI Python patterns:
+        - Prefer `take()`; if it returns (data, infos), use those; if it returns only data, synthesize infos.
+        - Fallback to `read()` similarly.
+        - As a last resort, use `take_data()` or `read_data()` and synthesize valid infos.
+        """
 
-        with self._lock:
-            for sig in deco.on_child_assembled(self, child_name, key, combined):
-                self._mark_complete_and_maybe_emit(sig.key, decorator_name, sig.complete)
+        def _mk_valid_infos(n: int) -> List[object]:
+            # Create minimal info objects with .valid = True
+            return [types.SimpleNamespace(valid=True) for _ in range(n)]
 
-    def _mark_complete_and_maybe_emit(self, key: Any, decorator_name: str, complete: bool) -> None:
-        per = self._complete_by_key.setdefault(key, {})
-        per[decorator_name] = bool(complete)
-        self._maybe_emit(key)
+        # try take()
+        if hasattr(self.reader, "take"):
+            res = self.reader.take()
+            if isinstance(res, tuple) and len(res) == 2:
+                data, infos = res
+                return list(data), list(infos)
+            if isinstance(res, list):
+                return res, _mk_valid_infos(len(res))
+        # try read()
+        if hasattr(self.reader, "read"):
+            res = self.reader.read()
+            if isinstance(res, tuple) and len(res) == 2:
+                data, infos = res
+                return list(data), list(infos)
+            if isinstance(res, list):
+                return res, _mk_valid_infos(len(res))
+        # fallbacks: *data() variants (valid only)
+        if hasattr(self.reader, "take_data"):
+            data = self.reader.take_data()
+            return list(data), _mk_valid_infos(len(data))
+        if hasattr(self.reader, "read_data"):
+            data = self.reader.read_data()
+            return list(data), _mk_valid_infos(len(data))
+        return [], []
 
-    def _maybe_emit(self, key: Any) -> None:
-        combined = self._combined_by_key.get(key)
-        if combined is None:
+    def poll_once(self) -> None:
+        """
+        Drain some samples from the underlying RTI reader and update decorators.
+
+        On valid samples: run decorators and, upon completion, notify parent with info.
+        On invalid/dispose: notify parent immediately with (combined=None, info).
+        """
+        data, infos = self._read_with_infos()
+        if not data and not infos:
+            _logger.debug("No data or infos available in poll_once()")
             return
 
-        # all required decorators done?
-        for name, deco in self.decorators.items():
-            if deco.required and not self._complete_by_key.get(key, {}).get(name, False):
-                return
+        # Normalize length mismatch edge cases
+        n = max(len(data), len(infos))
+        data = list(data) + [None] * (n - len(data))
+        infos = list(infos) + [None] * (n - len(infos))
 
-        # emit upstream
-        if self.parent_notify:
-            self.parent_notify(key, combined)
+        for sample, info in zip(data, infos):
+            if info is not None and hasattr(info, "valid") and not info.valid:
+                # dispose/unregister/etc.: bubble info upward with no combined
+                _logger.debug(f"Received invalid sample: {type(sample.data)}, info: {info}")
+                if self.parent_notify is not None:
+                    if sample is None:
+                        key = object()  # synthetic key for disposals
+                    elif self._key_fn_arity >= 3:
+                        key = self._key_fn(sample, info, self.reader)
+                    else:
+                        key = self._key_fn(sample)
+                    self._info_by_key[key] = info
+                    self.parent_notify(key, None, info)
+                continue
 
-        # clear one-shot data for this key
-        self._complete_by_key.pop(key, None)
-        self._combined_by_key.pop(key, None)
+            if sample is None:
+                _logger.debug("Received None sample, skipping")
+                continue
 
+            if self._key_fn_arity >= 3:
+                key = self._key_fn(sample.data, info, self.reader)
+            else:
+                key = self._key_fn(sample.data)
+            self._info_by_key[key] = info  # may be None if synthetic
+            combined = self._combined_by_key.get(key)
+            if combined is None:
+                combined = CombinedSample(base=sample.data)
+                self._combined_by_key[key] = combined
 
-def _yield_valid_data(reader: dds.DataReader) -> Iterable[Any]:
-    """Yield valid data samples from an RTI DataReader with a robust fallback chain."""
-    # Fast paths (only valid data)
-    for attr in ("take_data", "read_data"):
-        fn = getattr(reader, attr, None)
-        if callable(fn):
-            try:
-                seq = fn()
-                for data in seq:
-                    yield data
-                return
-            except Exception:
-                pass
-
-    # Loaned samples fallback
-    for attr in ("take", "read"):
-        fn = getattr(reader, attr, None)
-        if callable(fn):
-            try:
-                with fn() as samples:
-                    for s in samples:
-                        info = getattr(s, "info", None)
-                        if info is None or getattr(info, "valid", False):
-                            yield s.data
-                return
-            except Exception:
-                pass
-
-    # As a last resort, do nothing (no data)
-    return
+            _logger.debug(
+                f"Forwarding {type(sample.data).__name__.split("_")[-1]} to {len(self._decorators)} decorators"
+            )
+            for deco in list(self._decorators.values()):
+                _logger.debug(f"Calling decorator {deco.name}")
+                try:
+                    for sig in deco.on_reader_data(self, key, combined, sample.data):
+                        if sig.complete and self.parent_notify is not None:
+                            self.parent_notify(
+                                sig.key, self._combined_by_key.get(sig.key, combined), self._info_by_key.get(sig.key)
+                            )
+                except Exception:
+                    _logger.exception(f"Decorator {deco.name} raised in on_reader_data")

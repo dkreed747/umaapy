@@ -1,62 +1,90 @@
+"""
+Reader-side UMAA decorators:
+
+- :class:`GenSpecReader` — path-aware generalization/specialization merge (UMAA 3.9).
+- :class:`LargeSetReader` — assemble unordered sets (UMAA 3.8).
+- :class:`LargeListReader` — assemble ordered lists with next-element linking (UMAA 3.8).
+
+All internally handle UMAA NumericGUID keys safely via :func:`guid_key` / :func:`guid_equal`.
+"""
+
 from __future__ import annotations
 
-from typing import Any, Dict, Sequence, List, Optional, Tuple, Iterable
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
+import logging
+import inspect
 
-from umaapy.util.multi_topic_support import CombinedSample, get_at_path, guid_equal, guid_key
+from umaapy.util.multi_topic_support import (
+    CombinedSample,
+    ElementView,
+    get_at_path,
+    guid_key,
+    guid_equal,
+    path_for_set_element,
+    path_for_list_element,
+)
 from umaapy.util.multi_topic_reader import ReaderDecorator, AssemblySignal, ReaderNode
+
+_logger = logging.getLogger(__name__)
+
+
+def _supports_attr_path(fn) -> bool:
+    try:
+        return len(inspect.signature(fn).parameters) >= 3
+    except Exception:
+        return False
+
+
+_HAS_SET_ATTR_PATH = _supports_attr_path(path_for_set_element)
+_HAS_LIST_ATTR_PATH = _supports_attr_path(path_for_list_element)
+
+
+def _walk_attr_path(root: object, attr_path: tuple | None) -> object:
+    ps = root
+    if attr_path:
+        for name in attr_path:
+            ps = getattr(ps, name)
+    return ps
 
 
 class GenSpecReader(ReaderDecorator):
     """
-    Path-aware UMAA Generalization/Specialization reader decorator.
+    Path-aware UMAA Generalization/Specialization reader.
 
     Parameters
     ----------
-    attr_path : Sequence[str]
-        Where the generalization object lives inside the base sample.
-        Example: ('objective',) for ObjectiveExecutorControlCommandType.objective.
-
-    Behavior
-    --------
-    - Matches generalization <-> specialization by (specializationTopic, specializationID[, specializationTimestamp]).
-    - On match, registers an overlay (at `attr_path` if provided) so callers can do:
-          combined.view.<path>.<specialization_fields>
-      with specialization attributes taking precedence over base.
+    attr_path : Sequence[str], optional
+        Path of the generalization object inside the base sample
+        (e.g., ``('objective',)``). Defaults to top-level.
     """
 
     def __init__(self, attr_path: Sequence[str] = ()) -> None:
         super().__init__()
         self.attr_path: Tuple[str, ...] = tuple(attr_path)
-
-        # Internal buffers keyed by *hashable* GUID keys
-        # specID_k -> generalization object (at attr_path or top-level)
+        self.children: Dict[str, ReaderNode] = {}
+        # specID_k -> generalization object
         self._gen_by_spec_id: Dict[Any, Any] = {}
         # topic -> { specID_k -> specialization object }
         self._spec_by_topic_id: Dict[str, Dict[Any, Any]] = {}
-        # specID_k -> parent node assembly key
+        # specID_k -> parent key
         self._parent_key_by_spec_id: Dict[Any, Any] = {}
-
-        self.children: Dict[str, ReaderNode] = {}
 
     @staticmethod
     def _gen_binding(gen: Any) -> Tuple[str, Any, Optional[Any]]:
-        """Return (topic, specID, specTS?) from a generalization object."""
         topic = getattr(gen, "specializationTopic")
         sid = getattr(gen, "specializationID")
-        sts = getattr(gen, "specializationTimestamp", None)
+        sts = getattr(gen, "specializationTimestamp")
         return topic, sid, sts
 
     @staticmethod
     def _spec_binding(spec: Any) -> Tuple[Any, Optional[Any]]:
-        """Return (specID, specTS?) from a specialization object."""
-        sid = getattr(spec, "specializationID")
-        sts = getattr(spec, "specializationTimestamp", None)
+        sid = getattr(spec, "specializationReferenceID")
+        sts = getattr(spec, "specializationReferenceTimestamp")
         return sid, sts
 
     def on_reader_data(
         self, node: ReaderNode, key: Any, combined: CombinedSample, sample: Any
     ) -> Iterable[AssemblySignal]:
-        # Locate generalization at path (or top-level)
         gen_obj = get_at_path(sample, self.attr_path) if self.attr_path else sample
         topic, sid, sts = self._gen_binding(gen_obj)
         sid_k = guid_key(sid)
@@ -67,32 +95,26 @@ class GenSpecReader(ReaderDecorator):
         spec = self._spec_by_topic_id.get(topic, {}).get(sid_k)
         if spec is None:
             return ()
-
         ssid, ssts = self._spec_binding(spec)
         if guid_equal(ssid, sid) and (sts is None or ssts == sts):
-            # Register overlay at path, update node cache, and emit completion
             new_comb = combined.add_overlay_at(self.attr_path, spec) if self.attr_path else combined.with_overlay(spec)
             node._combined_by_key[key] = new_comb
             return (AssemblySignal(key, complete=True),)
-
         return ()
 
     def on_child_assembled(
         self, node: ReaderNode, child_name: str, key: Any, assembled: CombinedSample
     ) -> Iterable[AssemblySignal]:
-        # Child emitted a specialization sample
         spec = assembled.base
         sid, sts = self._spec_binding(spec)
         sid_k = guid_key(sid)
 
-        # Cache specialization by topic+id
         bucket = self._spec_by_topic_id.setdefault(child_name, {})
         bucket[sid_k] = spec
 
         gen = self._gen_by_spec_id.get(sid_k)
         if gen is None:
             return ()
-
         topic, gid, gts = self._gen_binding(gen)
         if topic != child_name or not guid_equal(gid, sid) or (gts is not None and gts != sts):
             return ()
@@ -111,109 +133,100 @@ class GenSpecReader(ReaderDecorator):
 
 
 class LargeSetReader(ReaderDecorator):
-    """
-    UMAA Large Set reader decorator.
-
-    Parameters
-    ----------
-    set_name : str
-        Logical attribute base name, e.g., 'conditionals' for 'conditionalsSetMetadata'.
-
-    Expectations
-    ------------
-    Parent/base has:   <set_name>SetMetadata with fields: setID, updateElementID[, updateElementTimestamp]
-    Element samples have: setID, elementID[, elementTimestamp]
-
-    Behavior
-    --------
-    Completes when metadata.updateElementID (and optionally updateElementTimestamp) matches a buffered element.
-    Emits a list of elements at combined.collections[set_name]. (Order is not defined for sets.)
-    """
-
-    def __init__(self, set_name: str) -> None:
+    def __init__(self, set_name: str, attr_path: tuple | None = None) -> None:
         super().__init__()
         self.set_name = set_name
+        self.attr_path = attr_path or ()
 
-        # Buffers keyed by *hashable* GUID keys
-        # setID_k -> { elemID_k -> element_obj }
         self._elems_by_set: Dict[Any, Dict[Any, Any]] = {}
-        # setID_k -> parent/base sample (latest)
         self._meta_by_set: Dict[Any, Any] = {}
-        # setID_k -> parent node assembly key
         self._parent_key_by_set: Dict[Any, Any] = {}
+        self._elem_combined_by_set: Dict[Any, Dict[Any, CombinedSample]] = {}
 
-        self.children: Dict[str, ReaderNode] = {}
+    # --- helpers ------------------------------------------------------------
 
     def _meta_struct(self, parent_sample: Any) -> Any:
-        return getattr(parent_sample, f"{self.set_name}SetMetadata")
+        ps = _walk_attr_path(parent_sample, self.attr_path)
+        return getattr(ps, f"{self.set_name}SetMetadata")
 
     def _meta_ids(self, parent_sample: Any) -> Tuple[Any, Optional[Any], Optional[Any]]:
         m = self._meta_struct(parent_sample)
-        set_id = getattr(m, "setID")
-        upd_id = getattr(m, "updateElementID", None)
-        upd_ts = getattr(m, "updateElementTimestamp", None)
-        return set_id, upd_id, upd_ts
+        return getattr(m, "setID"), getattr(m, "updateElementID"), getattr(m, "updateElementTimestamp", None)
+
+    def _set_size(self, parent_sample: Any) -> int:
+        m = self._meta_struct(parent_sample)
+        return getattr(m, "size", 0)
+
+    def _elem_path(self, elem_id_k: Any) -> tuple:
+        # Use helper’s 3-arg form if available; otherwise, prefix the returned path.
+        if _HAS_SET_ATTR_PATH:
+            return path_for_set_element(self.set_name, elem_id_k, self.attr_path)
+        base = path_for_set_element(self.set_name, elem_id_k)
+        return tuple(self.attr_path) + tuple(base)
 
     @staticmethod
-    def _elem_ids(elem: Any) -> Tuple[Any, Optional[Any], Optional[Any]]:
-        set_id = getattr(elem, "setID")
-        elem_id = getattr(elem, "elementID")
-        elem_ts = getattr(elem, "elementTimestamp", None)
-        return set_id, elem_id, elem_ts
+    def _elem_ids(elem: Any) -> Tuple[Any, Any, Optional[Any]]:
+        return getattr(elem, "setID"), getattr(elem, "elementID"), getattr(elem, "elementTimestamp")
 
-    def on_reader_data(
-        self, node: ReaderNode, key: Any, combined: CombinedSample, sample: Any
-    ) -> Iterable[AssemblySignal]:
+    def on_reader_data(self, node, key, combined, sample):
         set_id, upd_id, upd_ts = self._meta_ids(sample)
+        size = self._set_size(sample)
+
         set_id_k = guid_key(set_id)
         upd_id_k = guid_key(upd_id) if upd_id is not None else None
 
         self._meta_by_set[set_id_k] = sample
         self._parent_key_by_set[set_id_k] = key
 
-        if upd_id_k is None:
-            return ()
-
         bucket = self._elems_by_set.get(set_id_k, {})
-        maybe_elem = bucket.get(upd_id_k)
-        if maybe_elem is None:
-            return ()
+        comb_bucket = self._elem_combined_by_set.get(set_id_k, {})
 
-        # Optional timestamp gate
-        _, _, elem_ts = self._elem_ids(maybe_elem)
-        if upd_ts is not None and elem_ts != upd_ts:
-            return ()
+        if size == 0:
+            combined.collections[self.set_name] = []
+            node._combined_by_key[key] = combined
+            return (AssemblySignal(key, complete=True),)
 
-        # Assemble and emit
-        coll = list(bucket.values())
-        combined.collections[self.set_name] = coll
+        if size > 0:
+            if len(bucket) < size:
+                return ()
+        else:
+            if upd_id_k is None or upd_id_k not in bucket:
+                return ()
+            _, _, elem_ts = self._elem_ids(bucket[upd_id_k])
+            if upd_ts is not None and elem_ts != upd_ts:
+                return ()
+
+        views: List[ElementView] = []
+        for eid_k, e in bucket.items():
+            elem_path = self._elem_path(eid_k)
+            child_comb = comb_bucket.get(eid_k)
+            if child_comb:
+                for k2, v2 in child_comb.overlays_by_path.items():
+                    combined.overlays_by_path[elem_path + k2] = v2
+            views.append(ElementView(combined, e, elem_path))
+
+        combined.collections[self.set_name] = views
         node._combined_by_key[key] = combined
         return (AssemblySignal(key, complete=True),)
 
-    def on_child_assembled(
-        self, node: ReaderNode, child_name: str, key: Any, assembled: CombinedSample
-    ) -> Iterable[AssemblySignal]:
+    def on_child_assembled(self, node, child_name, key, assembled):
         elem = assembled.base
         set_id, elem_id, elem_ts = self._elem_ids(elem)
+
         set_id_k = guid_key(set_id)
         elem_id_k = guid_key(elem_id)
 
         bucket = self._elems_by_set.setdefault(set_id_k, {})
         bucket[elem_id_k] = elem
+        comb_bucket = self._elem_combined_by_set.setdefault(set_id_k, {})
+        comb_bucket[elem_id_k] = assembled
 
         parent_sample = self._meta_by_set.get(set_id_k)
         if parent_sample is None:
             return ()
 
+        size = self._set_size(parent_sample)
         _, upd_id, upd_ts = self._meta_ids(parent_sample)
-        if upd_id is None:
-            return ()
-
-        # Gate on presence (and timestamp if provided)
-        if not guid_equal(upd_id, elem_id):
-            return ()
-        if upd_ts is not None and elem_ts != upd_ts:
-            return ()
 
         parent_key = self._parent_key_by_set.get(set_id_k)
         if parent_key is None:
@@ -223,141 +236,160 @@ class LargeSetReader(ReaderDecorator):
         if comb is None:
             return ()
 
-        coll = list(bucket.values())
-        comb.collections[self.set_name] = coll
+        if size == 0:
+            comb.collections[self.set_name] = []
+            node._combined_by_key[parent_key] = comb
+            return (AssemblySignal(parent_key, complete=True),)
+
+        if size > 0:
+            if len(bucket) < size:
+                return ()
+        else:
+            if upd_id is None or not guid_equal(upd_id, elem_id):
+                return ()
+            if upd_ts is not None and elem_ts != upd_ts:
+                return ()
+
+        views: List[ElementView] = []
+        for eid_k, e in bucket.items():
+            elem_path = self._elem_path(eid_k)
+            child_comb = comb_bucket.get(eid_k)
+            if child_comb:
+                for k2, v2 in child_comb.overlays_by_path.items():
+                    comb.overlays_by_path[elem_path + k2] = v2
+            views.append(ElementView(comb, e, elem_path))
+
+        comb.collections[self.set_name] = views
         node._combined_by_key[parent_key] = comb
         return (AssemblySignal(parent_key, complete=True),)
 
 
 class LargeListReader(ReaderDecorator):
-    """
-    UMAA Large List reader decorator.
-
-    Parameters
-    ----------
-    list_name : str
-        Logical attribute base name, e.g., 'waypoints' for 'waypointsListMetadata'.
-
-    Expectations
-    ------------
-    Parent/base has:   <list_name>ListMetadata with fields: listID, startingElementID?, updateElementID[, updateElementTimestamp]
-    Element samples have: listID, elementID, nextElementID?, elementTimestamp?
-
-    Behavior
-    --------
-    Completes when metadata.updateElementID (and optionally updateElementTimestamp) matches a buffered element.
-    Emits an ordered list at combined.collections[list_name], built by following nextElementID
-    starting from startingElementID. If startingElementID is missing, falls back to an insertion order.
-    """
-
-    def __init__(self, list_name: str) -> None:
+    def __init__(self, list_name: str, attr_path: tuple | None = None) -> None:
         super().__init__()
         self.list_name = list_name
+        self.attr_path = attr_path or ()
 
-        # Buffers keyed by *hashable* GUID keys
-        # listID_k -> { elemID_k -> element_obj }
         self._elems_by_list: Dict[Any, Dict[Any, Any]] = {}
-        # listID_k -> parent/base sample (latest)
         self._meta_by_list: Dict[Any, Any] = {}
-        # listID_k -> parent node assembly key
         self._parent_key_by_list: Dict[Any, Any] = {}
-
-        self.children: Dict[str, ReaderNode] = {}
+        self._elem_combined_by_list: Dict[Any, Dict[Any, CombinedSample]] = {}
 
     def _meta_struct(self, parent_sample: Any) -> Any:
-        return getattr(parent_sample, f"{self.list_name}ListMetadata")
+        ps = _walk_attr_path(parent_sample, self.attr_path)
+        return getattr(ps, f"{self.list_name}ListMetadata")
 
     def _meta_ids(self, parent_sample: Any) -> Tuple[Any, Optional[Any], Optional[Any], Optional[Any]]:
         m = self._meta_struct(parent_sample)
-        list_id = getattr(m, "listID")
-        start_id = getattr(m, "startingElementID", None)
-        upd_id = getattr(m, "updateElementID", None)
-        upd_ts = getattr(m, "updateElementTimestamp", None)
-        return list_id, start_id, upd_id, upd_ts
+        return (
+            getattr(m, "listID"),
+            getattr(m, "startingElementID"),
+            getattr(m, "updateElementID"),
+            getattr(m, "updateElementTimestamp", None),
+        )
+
+    def _list_size(self, parent_sample: Any) -> int:
+        m = self._meta_struct(parent_sample)
+        return getattr(m, "size", 0)
 
     @staticmethod
     def _elem_ids(elem: Any) -> Tuple[Any, Any, Optional[Any], Optional[Any]]:
-        list_id = getattr(elem, "listID")
-        elem_id = getattr(elem, "elementID")
-        next_id = getattr(elem, "nextElementID", None)
-        elem_ts = getattr(elem, "elementTimestamp", None)
-        return list_id, elem_id, next_id, elem_ts
+        return (
+            getattr(elem, "listID"),
+            getattr(elem, "elementID"),
+            getattr(elem, "nextElementID", None),
+            getattr(elem, "elementTimestamp"),
+        )
+
+    def _elem_path(self, elem_id_k: Any) -> tuple:
+        if _HAS_LIST_ATTR_PATH:
+            return path_for_list_element(self.list_name, elem_id_k, self.attr_path)
+        base = path_for_list_element(self.list_name, elem_id_k)
+        return tuple(self.attr_path) + tuple(base)
 
     def _ordered_chain(self, elems_by_id: Dict[Any, Any], start_k: Optional[Any]) -> List[Any]:
-        """Build an ordered list following nextElementID, starting at start_k."""
         if not elems_by_id:
             return []
-
         if start_k is None:
             return list(elems_by_id.values())
-
-        ordered: List[Any] = []
-        cur = start_k
-        visited = set()
-
+        ordered, cur, visited = [], start_k, set()
         while cur is not None and cur in elems_by_id and cur not in visited:
             e = elems_by_id[cur]
             ordered.append(e)
             visited.add(cur)
             _, _, nxt, _ = self._elem_ids(e)
             cur = guid_key(nxt) if nxt is not None else None
-
         return ordered
 
-    def on_reader_data(
-        self, node: ReaderNode, key: Any, combined: CombinedSample, sample: Any
-    ) -> Iterable[AssemblySignal]:
+    def on_reader_data(self, node, key, combined, sample):
         list_id, start_id, upd_id, upd_ts = self._meta_ids(sample)
-        list_id_k = guid_key(list_id)
+        size = self._list_size(sample)
+
+        list_k = guid_key(list_id)
         start_k = guid_key(start_id) if start_id is not None else None
         upd_k = guid_key(upd_id) if upd_id is not None else None
 
-        self._meta_by_list[list_id_k] = sample
-        self._parent_key_by_list[list_id_k] = key
+        self._meta_by_list[list_k] = sample
+        self._parent_key_by_list[list_k] = key
 
-        if upd_k is None:
-            return ()
+        bucket = self._elems_by_list.get(list_k, {})
+        comb_bucket = self._elem_combined_by_list.get(list_k, {})
 
-        bucket = self._elems_by_list.get(list_id_k, {})
-        maybe = bucket.get(upd_k)
-        if maybe is None:
-            return ()
+        if size == 0:
+            combined.collections[self.list_name] = []
+            node._combined_by_key[key] = combined
+            return (AssemblySignal(key, complete=True),)
 
-        # Optional timestamp gate
-        _, _, _, ets = self._elem_ids(maybe)
-        if upd_ts is not None and ets != upd_ts:
-            return ()
+        if size > 0:
+            if len(bucket) < size or start_k is None:
+                return ()
+        else:
+            if upd_k is None or upd_k not in bucket:
+                return ()
+            _, _, _, ets = self._elem_ids(bucket[upd_k])
+            if upd_ts is not None and ets != upd_ts:
+                return ()
+            if start_k is None:
+                return ()
 
         ordered = self._ordered_chain(bucket, start_k)
-        combined.collections[self.list_name] = ordered
+        if size is not None and size > 0 and len(ordered) < size:
+            return ()
+
+        views: List[ElementView] = []
+        for e in ordered:
+            eid_k = guid_key(getattr(e, "elementID"))
+            elem_path = self._elem_path(eid_k)
+            child_comb = comb_bucket.get(eid_k)
+            if child_comb:
+                for k2, v2 in child_comb.overlays_by_path.items():
+                    combined.overlays_by_path[elem_path + k2] = v2
+            views.append(ElementView(combined, e, elem_path))
+
+        combined.collections[self.list_name] = views
         node._combined_by_key[key] = combined
         return (AssemblySignal(key, complete=True),)
 
-    def on_child_assembled(
-        self, node: ReaderNode, child_name: str, key: Any, assembled: CombinedSample
-    ) -> Iterable[AssemblySignal]:
+    def on_child_assembled(self, node, child_name, key, assembled):
         elem = assembled.base
-        list_id, elem_id, next_id, elem_ts = self._elem_ids(elem)
-        list_id_k = guid_key(list_id)
-        elem_id_k = guid_key(elem_id)
+        list_id, elem_id, _next_id, elem_ts = self._elem_ids(elem)
 
-        bucket = self._elems_by_list.setdefault(list_id_k, {})
-        bucket[elem_id_k] = elem
+        list_k = guid_key(list_id)
+        elem_k = guid_key(elem_id)
 
-        parent_sample = self._meta_by_list.get(list_id_k)
+        bucket = self._elems_by_list.setdefault(list_k, {})
+        bucket[elem_k] = elem
+        comb_bucket = self._elem_combined_by_list.setdefault(list_k, {})
+        comb_bucket[elem_k] = assembled
+
+        parent_sample = self._meta_by_list.get(list_k)
         if parent_sample is None:
             return ()
 
         _, start_id, upd_id, upd_ts = self._meta_ids(parent_sample)
-        if upd_id is None:
-            return ()
+        size = self._list_size(parent_sample)
 
-        if not guid_equal(upd_id, elem_id):
-            return ()
-        if upd_ts is not None and elem_ts != upd_ts:
-            return ()
-
-        parent_key = self._parent_key_by_list.get(list_id_k)
+        parent_key = self._parent_key_by_list.get(list_k)
         if parent_key is None:
             return ()
 
@@ -366,7 +398,51 @@ class LargeListReader(ReaderDecorator):
             return ()
 
         start_k = guid_key(start_id) if start_id is not None else None
+
+        if size == 0:
+            comb.collections[self.list_name] = []
+            node._combined_by_key[parent_key] = comb
+            return (AssemblySignal(parent_key, complete=True),)
+
+        if size > 0:
+            if len(bucket) < size or start_k is None:
+                return ()
+        else:
+            if upd_id is None or not guid_equal(upd_id, elem_id):
+                return ()
+            if upd_ts is not None and elem_ts != upd_ts:
+                return ()
+            if start_k is None:
+                return ()
+
         ordered = self._ordered_chain(bucket, start_k)
-        comb.collections[self.list_name] = ordered
+        if size is not None and size > 0 and len(ordered) < size:
+            return ()
+
+        views: List[ElementView] = []
+        for e in ordered:
+            eid_k = guid_key(getattr(e, "elementID"))
+            elem_path = self._elem_path(eid_k)
+            child_comb = comb_bucket.get(eid_k)
+            if child_comb:
+                for k2, v2 in child_comb.overlays_by_path.items():
+                    comb.overlays_by_path[elem_path + k2] = v2
+            views.append(ElementView(comb, e, elem_path))
+
+        comb.collections[self.list_name] = views
         node._combined_by_key[parent_key] = comb
         return (AssemblySignal(parent_key, complete=True),)
+
+
+class PassthroughReader(ReaderDecorator):
+    """
+    Leaf decorator that marks a node 'complete' immediately upon receiving
+    a valid sample. This allows parent decorators (e.g., GenSpecReader or
+    Large(Set|List)Reader above it) to proceed with merging.
+
+    Use this for topics that have no UMAA multi-topic structure of their own.
+    """
+
+    def on_reader_data(self, node, key, combined: CombinedSample, sample) -> Iterable[AssemblySignal]:
+        # We don’t modify 'combined'; just tell the parent we’re done at this key.
+        return (AssemblySignal(key, complete=True),)
