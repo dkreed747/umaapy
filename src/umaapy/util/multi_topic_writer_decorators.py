@@ -86,6 +86,30 @@ class GenSpecWriter(WriterDecorator):
         sid, sts = self._spec_identity(spec)
         self._bind_generalization(gen_obj, topic, sid, sts)
 
+        # Best-effort propagate common simple fields from specialization to generalization
+        # Copy any scalar attributes that exist on both objects (e.g., 'name') so reads resolve properly.
+        try:
+            # Prefer attributes defined on the generalization; take values from spec when present
+            candidate_attrs = []
+            try:
+                candidate_attrs = list(getattr(gen_obj, "__dict__", {}).keys())
+            except Exception:
+                candidate_attrs = []
+            if not candidate_attrs:
+                candidate_attrs = [a for a in dir(gen_obj) if not a.startswith("_")]
+            for attr in candidate_attrs:
+                if attr in {"specializationTopic", "specializationID", "specializationTimestamp"}:
+                    continue
+                if hasattr(spec, attr):
+                    sval = getattr(spec, attr)
+                    if isinstance(sval, (str, int, float, bool)):
+                        try:
+                            setattr(gen_obj, attr, sval)
+                        except Exception:
+                            continue
+        except Exception:
+            pass
+
 
 class LargeSetWriter(WriterDecorator):
     def __init__(
@@ -137,13 +161,18 @@ class LargeSetWriter(WriterDecorator):
 
         print(f"Dump builder: {builder.collections_by_path.items()}")
 
-        items = builder.collections_at(self.attr_path[:-1]).get(self.set_name, None)
+        # Prefer collections bag at the parent of the metadata field; fall back to current node
+        parent_path = tuple(self.attr_path[:-1])
+        items = builder.collections_at(parent_path).get(self.set_name, None)
+        used_parent_path = items is not None
+        if items is None:
+            items = builder.collections_at().get(self.set_name, None)
 
         if items is None:
             return
 
         items = items.to_runtime()
-        print(f"Large Set Publish Items: {items.to_runtime()}")
+        print(f"Large Set Publish Items: {items}")
         setattr(meta, "size", int(len(items)))
 
         if len(self._children) != 1:
@@ -154,8 +183,9 @@ class LargeSetWriter(WriterDecorator):
         for idx, e in enumerate(items):
             self._ensure_elem_set_id(e, set_id)
             elem_id, elem_ts = getattr(e, "elementID"), getattr(e, "elementTimestamp", None)
-
-            elem_path = path_for_set_element(self.set_name, elem_id) + tuple(self.attr_path)
+            # If items were attached at the parent-of-metadata path, prefix element node path with it
+            elem_prefix: Tuple[str, ...] = parent_path if used_parent_path else ()
+            elem_path = elem_prefix + path_for_set_element(self.set_name, elem_id)
             child_b = builder.spawn_child(e, elem_path)
             child.publish(child_b)
             last_id, last_ts = elem_id, elem_ts
@@ -228,7 +258,10 @@ class LargeListWriter(WriterDecorator):
         print(f"List attr_path: {self.attr_path}")
         print(f"Dump builder: {builder.collections_by_path.items()}")
 
+        # Prefer collections bag at the parent of the metadata field; fall back to current node
         items = builder.collections_at(self.attr_path[:-1]).get(self.list_name, None)
+        if items is None:
+            items = builder.collections_at().get(self.list_name, None)
 
         if items is None:
             print("Large List Items is None")
@@ -249,7 +282,9 @@ class LargeListWriter(WriterDecorator):
             setattr(e, "nextElementID", nxt)
         for e in items:
             elem_id = getattr(e, "elementID")
-            elem_path = path_for_list_element(self.list_name, elem_id) + tuple(self.attr_path)
+            # Element nodes live under the parent of the metadata field; prefix that path
+            parent_path = tuple(self.attr_path[:-1])
+            elem_path = parent_path + path_for_list_element(self.list_name, elem_id)
             child_b = builder.spawn_child(e, elem_path)
             child.publish(child_b)
 

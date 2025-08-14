@@ -53,6 +53,8 @@ class GenSpecReader(ReaderDecorator):
         self._spec_by_topic_id: Dict[str, Dict[Any, Any]] = {}
         # specID_k -> parent key
         self._parent_key_by_spec_id: Dict[Any, Any] = {}
+        # specID_k -> child's CombinedSample (to harvest nested collections on late generalization)
+        self._child_comb_by_spec_id: Dict[Any, CombinedSample] = {}
 
     @staticmethod
     def _gen_binding(gen: Any) -> Tuple[str, Any, Optional[Any]]:
@@ -84,6 +86,14 @@ class GenSpecReader(ReaderDecorator):
             return ()
         ssid, ssts = self._spec_binding(spec)
         if guid_equal(ssid, sid) and (sts is None or ssts == sts):
+            # Merge any nested collections we captured from the child specialization
+            child_comb = self._child_comb_by_spec_id.get(sid_k)
+            try:
+                if child_comb and getattr(child_comb, "collections", None):
+                    for cname, cval in child_comb.collections.items():
+                        combined.collections[cname] = cval
+            except Exception:
+                pass
             new_comb = combined.add_overlay_at(spec, self.attr_path)
             node._combined_by_key[key] = new_comb
             return (AssemblySignal(key, complete=True),)
@@ -93,12 +103,18 @@ class GenSpecReader(ReaderDecorator):
         self, node: ReaderNode, child_name: str, key: Any, assembled: CombinedSample
     ) -> Iterable[AssemblySignal]:
         _logger.debug(f"Received new {node.reader.type_name}")
+        try:
+            _logger.debug(f"[GenSpecReader] child '{child_name}' collections keys={list(assembled.collections.keys())}")
+        except Exception:
+            pass
         spec = assembled.base
         sid, sts = self._spec_binding(spec)
         sid_k = guid_key(sid)
 
         bucket = self._spec_by_topic_id.setdefault(child_name, {})
         bucket[sid_k] = spec
+        # Remember child's combined to later propagate its collections when gen arrives first
+        self._child_comb_by_spec_id[sid_k] = assembled
 
         gen = self._gen_by_spec_id.get(sid_k)
         if gen is None:
@@ -115,6 +131,7 @@ class GenSpecReader(ReaderDecorator):
         if comb is None:
             return ()
 
+        # Propagate any nested collections (e.g., lists/sets under the specialization)
         try:
             if hasattr(assembled, "collections") and assembled.collections:
                 for cname, cval in assembled.collections.items():
@@ -150,15 +167,15 @@ class LargeSetReader(ReaderDecorator):
         return getattr(m, "size", 0)
 
     def _elem_path(self, elem_id_k: Any) -> tuple:
-        base = path_for_set_element(self.set_name, elem_id_k)
-        return tuple(self.attr_path) + tuple(base)
+        # Element nodes are addressed by their set element token only; not under metadata path
+        return tuple(path_for_set_element(self.set_name, elem_id_k))
 
     @staticmethod
     def _elem_ids(elem: Any) -> Tuple[Any, Any, Optional[Any]]:
         return getattr(elem, "setID"), getattr(elem, "elementID"), getattr(elem, "elementTimestamp")
 
     def on_reader_data(self, node, key, combined, sample):
-        _logger.debug(f"Received new {type(sample).__name__}")
+        _logger.debug(f"[LargeSetReader:{self.set_name}] on_reader_data: sample={type(sample).__name__}")
         set_id, upd_id, upd_ts = self._meta_ids(sample)
         size = self._set_size(sample)
 
@@ -172,9 +189,12 @@ class LargeSetReader(ReaderDecorator):
         comb_bucket = self._elem_combined_by_set.get(set_id_k, {})
 
         if size == 0:
-            combined.collections[self.set_name] = []
-            node._combined_by_key[key] = combined
-            return (AssemblySignal(key, complete=True),)
+            # Treat zero-size as truly empty only when no elements have been observed
+            if not bucket:
+                combined.collections[self.set_name] = []
+                node._combined_by_key[key] = combined
+                _logger.debug(f"[LargeSetReader:{self.set_name}] complete empty (no elements)")
+                return (AssemblySignal(key, complete=True),)
 
         if size > 0:
             if len(bucket) < size:
@@ -193,14 +213,21 @@ class LargeSetReader(ReaderDecorator):
             if child_comb and child_comb.overlays_by_path:
                 for k2, v2 in child_comb.overlays_by_path.items():
                     combined.overlays_by_path[elem_path + k2] = v2
+            # Propagate child collections (e.g., nested sets/lists) to the parent combined
+            if child_comb and getattr(child_comb, "collections", None):
+                for cname, cval in child_comb.collections.items():
+                    combined.collections[cname] = cval
             views.append(ElementView(combined, e, elem_path))
 
         combined.collections[self.set_name] = views
         node._combined_by_key[key] = combined
+        _logger.debug(f"[LargeSetReader:{self.set_name}] complete size>0 with {len(views)} elements (size={size})")
         return (AssemblySignal(key, complete=True),)
 
     def on_child_assembled(self, node, child_name, key, assembled):
-        _logger.debug(f"Collections {assembled.collections.keys()}")
+        _logger.debug(
+            f"[LargeSetReader:{self.set_name}] on_child_assembled: collections={list(assembled.collections.keys())}"
+        )
         elem = assembled.base
         set_id, elem_id, elem_ts = self._elem_ids(elem)
 
@@ -228,9 +255,12 @@ class LargeSetReader(ReaderDecorator):
             return ()
 
         if size == 0:
-            comb.collections[self.set_name] = []
-            node._combined_by_key[parent_key] = comb
-            return (AssemblySignal(parent_key, complete=True),)
+            # Complete as empty only if we have no elements recorded
+            if not bucket:
+                comb.collections[self.set_name] = []
+                node._combined_by_key[parent_key] = comb
+                _logger.debug(f"[LargeSetReader:{self.set_name}] complete empty on child (no elements)")
+                return (AssemblySignal(parent_key, complete=True),)
 
         if size > 0:
             if len(bucket) < size:
@@ -248,10 +278,15 @@ class LargeSetReader(ReaderDecorator):
             if child_comb:
                 for k2, v2 in child_comb.overlays_by_path.items():
                     comb.overlays_by_path[elem_path + k2] = v2
+                # Propagate child collections (e.g., nested sets/lists) upward
+                if getattr(child_comb, "collections", None):
+                    for cname, cval in child_comb.collections.items():
+                        comb.collections[cname] = cval
             views.append(ElementView(comb, e, elem_path))
 
         comb.collections[self.set_name] = views
         node._combined_by_key[parent_key] = comb
+        _logger.debug(f"[LargeSetReader:{self.set_name}] complete on child with {len(views)} elements (size={size})")
         return (AssemblySignal(parent_key, complete=True),)
 
 
@@ -291,8 +326,8 @@ class LargeListReader(ReaderDecorator):
         )
 
     def _elem_path(self, elem_id_k: Any) -> tuple:
-        base = path_for_list_element(self.list_name, elem_id_k)
-        return tuple(self.attr_path) + tuple(base)
+        # Element nodes are addressed by their list element token only; not under metadata path
+        return tuple(path_for_list_element(self.list_name, elem_id_k))
 
     def _ordered_chain(self, elems_by_id: Dict[Any, Any], start_k: Optional[Any]) -> List[Any]:
         if not elems_by_id:
@@ -309,7 +344,7 @@ class LargeListReader(ReaderDecorator):
         return ordered
 
     def on_reader_data(self, node, key, combined, sample):
-        _logger.debug(f"Received new {node.reader.type_name}")
+        _logger.debug(f"[LargeListReader:{self.list_name}] on_reader_data: sample={type(sample).__name__}")
         list_id, start_id, upd_id, upd_ts = self._meta_ids(sample)
         size = self._list_size(sample)
 
@@ -323,43 +358,44 @@ class LargeListReader(ReaderDecorator):
         bucket = self._elems_by_list.get(list_k, {})
         comb_bucket = self._elem_combined_by_list.get(list_k, {})
 
-        if size == 0:
+        _logger.debug(
+            f"[LargeListReader:{self.list_name}] metadata: size={size}, bucket_size={len(bucket)}, start_k={start_k}"
+        )
+
+        # Check if we can complete the list now
+        if size == 0 and not bucket:
+            # Empty list case - can complete immediately
             combined.collections[self.list_name] = []
             node._combined_by_key[key] = combined
+            _logger.debug(f"[LargeListReader:{self.list_name}] complete empty (no elements)")
             return (AssemblySignal(key, complete=True),)
 
-        if size > 0:
-            if len(bucket) < size or start_k is None:
-                return ()
-        else:
-            if upd_k is None or upd_k not in bucket:
-                return ()
-            _, _, _, ets = self._elem_ids(bucket[upd_k])
-            if upd_ts is not None and ets != upd_ts:
-                return ()
-            if start_k is None:
-                return ()
+        # For non-empty lists, check if we already have all elements
+        if size > 0 and len(bucket) >= size and start_k is not None:
+            # We have all elements and metadata - can complete now
+            ordered = self._ordered_chain(bucket, start_k)
+            if len(ordered) >= size:
+                views: List[ElementView] = []
+                for e in ordered:
+                    eid_k = guid_key(getattr(e, "elementID"))
+                    elem_path = self._elem_path(eid_k)
+                    child_comb = comb_bucket.get(eid_k)
+                    if child_comb:
+                        for k2, v2 in child_comb.overlays_by_path.items():
+                            combined.overlays_by_path[elem_path + k2] = v2
+                    views.append(ElementView(combined, e, elem_path))
 
-        ordered = self._ordered_chain(bucket, start_k)
-        if size is not None and size > 0 and len(ordered) < size:
-            return ()
+                combined.collections[self.list_name] = views
+                node._combined_by_key[key] = combined
+                _logger.debug(f"[LargeListReader:{self.list_name}] complete with {len(views)} elements from metadata")
+                return (AssemblySignal(key, complete=True),)
 
-        views: List[ElementView] = []
-        for e in ordered:
-            eid_k = guid_key(getattr(e, "elementID"))
-            elem_path = self._elem_path(eid_k)
-            child_comb = comb_bucket.get(eid_k)
-            if child_comb:
-                for k2, v2 in child_comb.overlays_by_path.items():
-                    combined.overlays_by_path[elem_path + k2] = v2
-            views.append(ElementView(combined, e, elem_path))
-
-        combined.collections[self.list_name] = views
-        node._combined_by_key[key] = combined
-        return (AssemblySignal(key, complete=True),)
+        # If we can't complete yet, wait for more elements
+        _logger.debug(f"[LargeListReader:{self.list_name}] waiting for more elements or metadata")
+        return ()
 
     def on_child_assembled(self, node, child_name, key, assembled):
-        _logger.debug(f"Received new {node.reader.type_name}")
+        _logger.debug(f"[LargeListReader:{self.list_name}] on_child_assembled: element={type(assembled.base).__name__}")
         elem = assembled.base
         list_id, elem_id, _next_id, elem_ts = self._elem_ids(elem)
 
@@ -371,8 +407,13 @@ class LargeListReader(ReaderDecorator):
         comb_bucket = self._elem_combined_by_list.setdefault(list_k, {})
         comb_bucket[elem_k] = assembled
 
+        _logger.debug(
+            f"[LargeListReader:{self.list_name}] stored element: list_k={list_k}, elem_k={elem_k}, bucket_size={len(bucket)}"
+        )
+
         parent_sample = self._meta_by_list.get(list_k)
         if parent_sample is None:
+            _logger.debug(f"[LargeListReader:{self.list_name}] no parent metadata found for list_k={list_k}")
             return ()
 
         _, start_id, upd_id, upd_ts = self._meta_ids(parent_sample)
@@ -380,32 +421,49 @@ class LargeListReader(ReaderDecorator):
 
         parent_key = self._parent_key_by_list.get(list_k)
         if parent_key is None:
+            _logger.debug(f"[LargeListReader:{self.list_name}] no parent key found for list_k={list_k}")
             return ()
 
         comb = node._combined_by_key.get(parent_key)
         if comb is None:
+            _logger.debug(f"[LargeListReader:{self.list_name}] no combined sample found for parent_key={parent_key}")
             return ()
 
         start_k = guid_key(start_id) if start_id is not None else None
 
+        _logger.debug(
+            f"[LargeListReader:{self.list_name}] checking completion: size={size}, bucket_size={len(bucket)}, start_k={start_k}"
+        )
+
         if size == 0:
-            comb.collections[self.list_name] = []
-            node._combined_by_key[parent_key] = comb
-            return (AssemblySignal(parent_key, complete=True),)
+            if not bucket:
+                comb.collections[self.list_name] = []
+                node._combined_by_key[parent_key] = comb
+                _logger.debug(f"[LargeListReader:{self.list_name}] complete empty (no elements)")
+                return (AssemblySignal(parent_key, complete=True),)
 
         if size > 0:
             if len(bucket) < size or start_k is None:
+                _logger.debug(
+                    f"[LargeListReader:{self.list_name}] waiting for more elements: have={len(bucket)}, need={size}"
+                )
                 return ()
         else:
             if upd_id is None or not guid_equal(upd_id, elem_id):
+                _logger.debug(f"[LargeListReader:{self.list_name}] update marker mismatch")
                 return ()
             if upd_ts is not None and elem_ts != upd_ts:
+                _logger.debug(f"[LargeListReader:{self.list_name}] timestamp mismatch")
                 return ()
             if start_k is None:
+                _logger.debug(f"[LargeListReader:{self.list_name}] no start element")
                 return ()
 
         ordered = self._ordered_chain(bucket, start_k)
         if size is not None and size > 0 and len(ordered) < size:
+            _logger.debug(
+                f"[LargeListReader:{self.list_name}] ordered chain incomplete: have={len(ordered)}, need={size}"
+            )
             return ()
 
         views: List[ElementView] = []
@@ -420,6 +478,7 @@ class LargeListReader(ReaderDecorator):
 
         comb.collections[self.list_name] = views
         node._combined_by_key[parent_key] = comb
+        _logger.debug(f"[LargeListReader:{self.list_name}] complete with {len(views)} elements")
         return (AssemblySignal(parent_key, complete=True),)
 
 

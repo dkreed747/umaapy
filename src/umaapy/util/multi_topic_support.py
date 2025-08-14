@@ -202,6 +202,21 @@ class OverlayView:
         if name in self._collections:
             return self._collections[name]
 
+        # If an overlay object exists at the current path, prefer its attributes.
+        current_overlay = self._overlays_by_path.get(self._path)
+        if current_overlay is not None and hasattr(current_overlay, name):
+            val = getattr(current_overlay, name)
+            is_obj = hasattr(val, "__dict__") or hasattr(val, "__slots__")
+            if is_obj:
+                base_sub = getattr(self._base, name) if hasattr(self._base, name) else None
+                return OverlayView(
+                    base=base_sub,
+                    collections=self._collections,
+                    overlays_by_path=self._overlays_by_path,
+                    path=self._path + (name,),
+                )
+            return val
+
         sub_path = self._path + (name,)
         if sub_path in self._overlays_by_path:
             base_sub = getattr(self._base, name) if hasattr(self._base, name) else None
@@ -394,6 +409,12 @@ class CombinedBuilder:
         """
         p = tuple(path)
 
+        # Debug trace of path rebasing for child builders
+        try:
+            print(f"Spawn child: p={p}, keys={list(self.collections_by_path.keys())}")
+        except Exception:
+            pass
+
         child_collections_by_path: Dict[Tuple[Any, ...], Dict[str, Any]] = {}
         for k, v in self.collections_by_path.items():
             if len(k) >= len(p) and tuple(k[: len(p)]) == p:
@@ -406,6 +427,11 @@ class CombinedBuilder:
             if len(k) >= len(p) and tuple(k[: len(p)]) == p:
                 rel = tuple(k[len(p) :])
                 child_overlays[rel] = v
+
+        try:
+            print(f"Child keys: {list(child_collections_by_path.keys())}")
+        except Exception:
+            pass
 
         return CombinedBuilder(
             base=base_obj,
@@ -528,6 +554,10 @@ class ElementView:
         self._path = tuple(path)
 
     def __getattr__(self, name: str) -> Any:
+        # Provide access to the global collections bag from any element node
+        if name == "collections":
+            return self._combined.collections
+
         # overlays directly at this element node
         sub = self._path + (name,)
         if sub in self._combined.overlays_by_path:
@@ -546,6 +576,15 @@ class ElementView:
 
         if hasattr(self._elem, "element"):
             elem = self._elem.element
+
+            # If a specialization overlay exists at the element node, use it to resolve attributes
+            overlay_elem_path = self._path + ("element",)
+            overlay_obj = self._combined.overlays_by_path.get(overlay_elem_path)
+            if overlay_obj is not None and hasattr(overlay_obj, name):
+                val = getattr(overlay_obj, name)
+                # Return overlay attribute directly; nested struct access proceeds on this object
+                return val
+
             sub2 = self._path + ("element", name)
             if sub2 in self._combined.overlays_by_path:
                 base_sub = getattr(elem, name) if hasattr(elem, name) else None
@@ -614,17 +653,25 @@ class ElementHandle:
         return self._b.collections_at(self._path)
 
     def __getattr__(self, name: str):
-        # Delegate unknown attrs to the underlying element
+        # Delegate attribute access to wrapper first, then the contained 'element'
         base = object.__getattribute__(self, "base")
         if hasattr(base, name):
             return getattr(base, name)
+        if hasattr(base, "element") and hasattr(base.element, name):
+            return getattr(base.element, name)
         raise AttributeError(name)
 
     def __setattr__(self, name: str, value):
-        # Keep internal fields local; everything else goes to the element
+        # Keep internal fields local; route user fields to wrapper if present, else to contained element
         if name in {"_b", "_path", "base"} or name.startswith("_"):
             return object.__setattr__(self, name, value)
         base = object.__getattribute__(self, "base")
+        if hasattr(base, name):
+            setattr(base, name, value)
+            return
+        if hasattr(base, "element"):
+            setattr(base.element, name, value)
+            return
         setattr(base, name, value)
 
 
@@ -770,7 +817,7 @@ class UmaaReaderAdapter:
         self._root_node = root_node
         self._root_reader = root_reader
 
-        # Buffer stores (CombinedSample | None, SampleInfo | None) pairs.
+        # Buffer stores (key, CombinedSample | None, SampleInfo | None) triples.
         self._buf = deque()
         self._buf_lock = threading.Lock()
 
@@ -780,7 +827,7 @@ class UmaaReaderAdapter:
         # Parent notify from the root UMAA node writes into our buffer.
         def _on_ready(_key: Any, combined: Optional[CombinedSample], info: Optional[object]) -> None:
             with self._buf_lock:
-                self._buf.append((combined, info))
+                self._buf.append((_key, combined, info))
             if self._user_listener and (self._user_status_mask & dds.StatusMask.DATA_AVAILABLE):
                 cb = getattr(self._user_listener, "on_data_available", None)
                 if callable(cb):
@@ -816,9 +863,16 @@ class UmaaReaderAdapter:
             `samples[i]` is a `CombinedSample` or `None` if `infos[i].valid == False`.
         """
         with self._buf_lock:
-            pairs = list(self._buf)
-        samples = [p[0] for p in pairs]
-        infos = [p[1] for p in pairs]
+            triples = list(self._buf)
+        # Deduplicate by key keeping the latest occurrence; preserve arrival order among distinct keys
+        last_index_by_key: Dict[Any, int] = {}
+        data_by_key: Dict[Any, Tuple[Optional[CombinedSample], Optional[object]]] = {}
+        for idx, (k, s, i) in enumerate(triples):
+            last_index_by_key[k] = idx
+            data_by_key[k] = (s, i)
+        ordered_keys = sorted(last_index_by_key, key=lambda k: last_index_by_key[k])
+        samples = [data_by_key[k][0] for k in ordered_keys]
+        infos = [data_by_key[k][1] for k in ordered_keys]
         return samples, infos
 
     def take(self):
@@ -830,10 +884,17 @@ class UmaaReaderAdapter:
         (samples, infos) : (list, list)
         """
         with self._buf_lock:
-            pairs = list(self._buf)
+            triples = list(self._buf)
             self._buf.clear()
-        samples = [p[0] for p in pairs]
-        infos = [p[1] for p in pairs]
+        # Deduplicate by key keeping the latest occurrence; preserve arrival order among distinct keys
+        last_index_by_key: Dict[Any, int] = {}
+        data_by_key: Dict[Any, Tuple[Optional[CombinedSample], Optional[object]]] = {}
+        for idx, (k, s, i) in enumerate(triples):
+            last_index_by_key[k] = idx
+            data_by_key[k] = (s, i)
+        ordered_keys = sorted(last_index_by_key, key=lambda k: last_index_by_key[k])
+        samples = [data_by_key[k][0] for k in ordered_keys]
+        infos = [data_by_key[k][1] for k in ordered_keys]
         return samples, infos
 
     def read_data(self):
