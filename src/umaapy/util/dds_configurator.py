@@ -10,14 +10,14 @@ from umaapy.util.umaa_utils import (
     classify_obj_by_umaa,
     UMAAConcept,
     get_specializations_from_generalization,
+    infer_umaa_key_fields,
+    make_instance_key_fn,
 )
 
 from umaapy.util.multi_topic_support import (
     UmaaReaderAdapter,
     UmaaFilteredReaderAdapter,
     UmaaWriterAdapter,
-    infer_umaa_key_fields,
-    make_instance_key_fn,
 )
 
 from umaapy.util.multi_topic_reader import ReaderNode
@@ -510,7 +510,7 @@ class DDSConfigurator:
             attr_path = ("element",) if set_name == "objectives" else ()
             node.register_decorator(
                 set_name,
-                LargeSetWriter(set_name, attr_path=attr_path, expected_child_topic=topic),
+                LargeSetWriter(set_name, attr_path=attr_path),
             )
             elem_writer = self.get_writer(elem_t)
             child = WriterNode(elem_writer)
@@ -523,7 +523,7 @@ class DDSConfigurator:
             attr_path = ("element",) if list_name == "waypoints" else ()
             node.register_decorator(
                 list_name,
-                LargeListWriter(list_name, attr_path=attr_path, expected_child_topic=topic),
+                LargeListWriter(list_name, attr_path=attr_path),
             )
             elem_writer = self.get_writer(elem_t)
             child = WriterNode(elem_writer)
@@ -532,7 +532,7 @@ class DDSConfigurator:
 
         # Generalization/Specializations
         for path, _gen_t, specs in self._mt_iter_generalizations(t):
-            node.register_decorator("gen_spec", GenSpecWriter(attr_path=path, resolve_child_by_topic_name=lambda x: x))
+            node.register_decorator("gen_spec", GenSpecWriter(attr_path=path))
             for topic_short, spec_t in specs.items():
                 spec_writer = self.get_writer(spec_t)
                 child = WriterNode(spec_writer)

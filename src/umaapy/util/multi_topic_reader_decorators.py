@@ -18,33 +18,18 @@ from umaapy.util.multi_topic_support import (
     CombinedSample,
     ElementView,
     get_at_path,
+)
+
+from umaapy.util.umaa_utils import (
     guid_key,
     guid_equal,
     path_for_set_element,
     path_for_list_element,
 )
+
 from umaapy.util.multi_topic_reader import ReaderDecorator, AssemblySignal, ReaderNode
 
 _logger = logging.getLogger(__name__)
-
-
-def _supports_attr_path(fn) -> bool:
-    try:
-        return len(inspect.signature(fn).parameters) >= 3
-    except Exception:
-        return False
-
-
-_HAS_SET_ATTR_PATH = _supports_attr_path(path_for_set_element)
-_HAS_LIST_ATTR_PATH = _supports_attr_path(path_for_list_element)
-
-
-def _walk_attr_path(root: object, attr_path: tuple | None) -> object:
-    ps = root
-    if attr_path:
-        for name in attr_path:
-            ps = getattr(ps, name)
-    return ps
 
 
 class GenSpecReader(ReaderDecorator):
@@ -85,6 +70,8 @@ class GenSpecReader(ReaderDecorator):
     def on_reader_data(
         self, node: ReaderNode, key: Any, combined: CombinedSample, sample: Any
     ) -> Iterable[AssemblySignal]:
+        _logger.debug(f"Received new {node.reader.type_name}")
+
         gen_obj = get_at_path(sample, self.attr_path) if self.attr_path else sample
         topic, sid, sts = self._gen_binding(gen_obj)
         sid_k = guid_key(sid)
@@ -97,7 +84,7 @@ class GenSpecReader(ReaderDecorator):
             return ()
         ssid, ssts = self._spec_binding(spec)
         if guid_equal(ssid, sid) and (sts is None or ssts == sts):
-            new_comb = combined.add_overlay_at(self.attr_path, spec) if self.attr_path else combined.with_overlay(spec)
+            new_comb = combined.add_overlay_at(spec, self.attr_path)
             node._combined_by_key[key] = new_comb
             return (AssemblySignal(key, complete=True),)
         return ()
@@ -105,6 +92,7 @@ class GenSpecReader(ReaderDecorator):
     def on_child_assembled(
         self, node: ReaderNode, child_name: str, key: Any, assembled: CombinedSample
     ) -> Iterable[AssemblySignal]:
+        _logger.debug(f"Received new {node.reader.type_name}")
         spec = assembled.base
         sid, sts = self._spec_binding(spec)
         sid_k = guid_key(sid)
@@ -127,26 +115,24 @@ class GenSpecReader(ReaderDecorator):
         if comb is None:
             return ()
 
-        new_comb = comb.add_overlay_at(self.attr_path, spec) if self.attr_path else comb.with_overlay(spec)
+        new_comb = comb.add_overlay_at(self.attr_path, spec)
         node._combined_by_key[parent_key] = new_comb
         return (AssemblySignal(parent_key, complete=True),)
 
 
 class LargeSetReader(ReaderDecorator):
-    def __init__(self, set_name: str, attr_path: tuple | None = None) -> None:
+    def __init__(self, set_name: str, attr_path: Sequence[str] = ()) -> None:
         super().__init__()
         self.set_name = set_name
-        self.attr_path = attr_path or ()
+        self.attr_path: Tuple[str, ...] = tuple(attr_path)
 
         self._elems_by_set: Dict[Any, Dict[Any, Any]] = {}
         self._meta_by_set: Dict[Any, Any] = {}
         self._parent_key_by_set: Dict[Any, Any] = {}
         self._elem_combined_by_set: Dict[Any, Dict[Any, CombinedSample]] = {}
 
-    # --- helpers ------------------------------------------------------------
-
     def _meta_struct(self, parent_sample: Any) -> Any:
-        ps = _walk_attr_path(parent_sample, self.attr_path)
+        ps = get_at_path(parent_sample, self.attr_path)
         return getattr(ps, f"{self.set_name}SetMetadata")
 
     def _meta_ids(self, parent_sample: Any) -> Tuple[Any, Optional[Any], Optional[Any]]:
@@ -158,9 +144,6 @@ class LargeSetReader(ReaderDecorator):
         return getattr(m, "size", 0)
 
     def _elem_path(self, elem_id_k: Any) -> tuple:
-        # Use helper’s 3-arg form if available; otherwise, prefix the returned path.
-        if _HAS_SET_ATTR_PATH:
-            return path_for_set_element(self.set_name, elem_id_k, self.attr_path)
         base = path_for_set_element(self.set_name, elem_id_k)
         return tuple(self.attr_path) + tuple(base)
 
@@ -169,6 +152,7 @@ class LargeSetReader(ReaderDecorator):
         return getattr(elem, "setID"), getattr(elem, "elementID"), getattr(elem, "elementTimestamp")
 
     def on_reader_data(self, node, key, combined, sample):
+        _logger.debug(f"Received new {type(sample).__name__}")
         set_id, upd_id, upd_ts = self._meta_ids(sample)
         size = self._set_size(sample)
 
@@ -200,7 +184,7 @@ class LargeSetReader(ReaderDecorator):
         for eid_k, e in bucket.items():
             elem_path = self._elem_path(eid_k)
             child_comb = comb_bucket.get(eid_k)
-            if child_comb:
+            if child_comb and child_comb.overlays_by_path:
                 for k2, v2 in child_comb.overlays_by_path.items():
                     combined.overlays_by_path[elem_path + k2] = v2
             views.append(ElementView(combined, e, elem_path))
@@ -210,6 +194,7 @@ class LargeSetReader(ReaderDecorator):
         return (AssemblySignal(key, complete=True),)
 
     def on_child_assembled(self, node, child_name, key, assembled):
+        _logger.debug(f"Collections {assembled.collections.keys()}")
         elem = assembled.base
         set_id, elem_id, elem_ts = self._elem_ids(elem)
 
@@ -265,18 +250,17 @@ class LargeSetReader(ReaderDecorator):
 
 
 class LargeListReader(ReaderDecorator):
-    def __init__(self, list_name: str, attr_path: tuple | None = None) -> None:
+    def __init__(self, list_name: str, attr_path: Sequence[str] = ()) -> None:
         super().__init__()
         self.list_name = list_name
-        self.attr_path = attr_path or ()
-
+        self.attr_path: Tuple[str, ...] = tuple(attr_path)
         self._elems_by_list: Dict[Any, Dict[Any, Any]] = {}
         self._meta_by_list: Dict[Any, Any] = {}
         self._parent_key_by_list: Dict[Any, Any] = {}
         self._elem_combined_by_list: Dict[Any, Dict[Any, CombinedSample]] = {}
 
     def _meta_struct(self, parent_sample: Any) -> Any:
-        ps = _walk_attr_path(parent_sample, self.attr_path)
+        ps = get_at_path(parent_sample, self.attr_path)
         return getattr(ps, f"{self.list_name}ListMetadata")
 
     def _meta_ids(self, parent_sample: Any) -> Tuple[Any, Optional[Any], Optional[Any], Optional[Any]]:
@@ -302,8 +286,6 @@ class LargeListReader(ReaderDecorator):
         )
 
     def _elem_path(self, elem_id_k: Any) -> tuple:
-        if _HAS_LIST_ATTR_PATH:
-            return path_for_list_element(self.list_name, elem_id_k, self.attr_path)
         base = path_for_list_element(self.list_name, elem_id_k)
         return tuple(self.attr_path) + tuple(base)
 
@@ -322,6 +304,7 @@ class LargeListReader(ReaderDecorator):
         return ordered
 
     def on_reader_data(self, node, key, combined, sample):
+        _logger.debug(f"Received new {node.reader.type_name}")
         list_id, start_id, upd_id, upd_ts = self._meta_ids(sample)
         size = self._list_size(sample)
 
@@ -371,6 +354,7 @@ class LargeListReader(ReaderDecorator):
         return (AssemblySignal(key, complete=True),)
 
     def on_child_assembled(self, node, child_name, key, assembled):
+        _logger.debug(f"Received new {node.reader.type_name}")
         elem = assembled.base
         list_id, elem_id, _next_id, elem_ts = self._elem_ids(elem)
 

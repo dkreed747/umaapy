@@ -44,170 +44,17 @@ from typing import (
 import rti.connextdds as dds
 
 from umaapy.util.umaa_utils import (
-    NumericGUID,
-    HashableNumericGUID,
-    IdentifierType,
-    HashableIdentifierType,
+    guid_key,
     classify_obj_by_umaa,
     UMAAConcept,
-    UMAAFieldInfo,
+    path_for_list_element,
+    path_for_set_element,
 )
 from umaapy.util.uuid_factory import generate_guid, NIL_GUID
 
 if TYPE_CHECKING:
     from umaapy.util.multi_topic_reader import ReaderNode
     from umaapy.util.multi_topic_writer import WriterNode, TopLevelWriter
-
-
-def guid_key(value: Any) -> Any:
-    """
-    Return a hashable key for UMAA NumericGUID-like values.
-
-    - If `value` is a `HashableNumericGUID`, return it as-is.
-    - If `value` is a `NumericGUID`, wrap it in `HashableNumericGUID`.
-    - Otherwise, return the value unchanged.
-
-    Parameters
-    ----------
-    value : Any
-        A GUID or other identifier value.
-
-    Returns
-    -------
-    Any
-        A hashable key suitable for use in dicts/sets.
-    """
-    if isinstance(value, HashableNumericGUID):
-        return value
-    if isinstance(value, NumericGUID):
-        return HashableNumericGUID(value)
-    if isinstance(value, HashableIdentifierType):
-        return value
-    if isinstance(value, IdentifierType):
-        return HashableIdentifierType(value)
-    return value
-
-
-def guid_equal(a: Any, b: Any) -> bool:
-    """
-    Robust equality across (NumericGUID|HashableNumericGUID|other) values.
-
-    Parameters
-    ----------
-    a, b : Any
-        Values to compare.
-
-    Returns
-    -------
-    bool
-        True when the underlying GUID values (or raw values) match.
-    """
-    ak = guid_key(a)
-    bk = guid_key(b)
-    try:
-        return ak == bk
-    except Exception:
-        return a == b
-
-
-def _get_nested_attr(obj: Any, dotted: str) -> Any:
-    cur = obj
-    for seg in dotted.split("."):
-        cur = getattr(cur, seg, None)
-        if cur is None:
-            break
-    return cur
-
-
-def make_instance_key_fn(key_fields: Iterable[str]):
-    """
-    Build a reader key function that returns a tuple of UMAA-aware key fields.
-
-    - Accepts *dotted* attribute names (e.g., "header.sessionID").
-    - GUID fields are normalized via guid_key() for stable hashing/equality.
-    - Signature is 3-arg: (sample, info, reader). ReaderNode also accepts 1-arg.
-
-    Example:
-        key_fn = make_instance_key_fn(("sessionID", "destination", "source"))
-    """
-    fields = tuple(key_fields)
-
-    def _fn(sample, info=None, reader=None):
-        # If RTI SampleInfo carries instance_handle and reader can give key_holder, prefer it.
-        holder = None
-        ih = getattr(info, "instance_handle", None) if info is not None else None
-        if ih is not None and reader is not None:
-            try:
-                holder = reader.get_key_value(ih)  # Connext: key-only holder
-            except Exception:
-                holder = None
-        src = holder or sample
-        vals = []
-        for f in fields:
-            v = _get_nested_attr(src, f)
-            vals.append(guid_key(v))
-        return tuple(vals)
-
-    _fn.__signature__ = inspect.Signature(
-        parameters=[inspect.Parameter(n, inspect.Parameter.POSITIONAL_ONLY) for n in ("sample", "info", "reader")]
-    )
-    return _fn
-
-
-def infer_umaa_key_fields(dtype: type) -> tuple[str, ...]:
-    """
-    Try to infer stable UMAA key fields for a type using classify_obj_by_umaa.
-    Falls back to common UMAA naming patterns.
-    """
-    f_info: Optional[UMAAFieldInfo] = classify_obj_by_umaa(dtype()).get((), None)
-    out = set()
-    if f_info is not None:
-        for classification in f_info.classifications:
-            out.update(classification.keys)
-        return tuple(sorted(out))
-
-
-# Element path tokens. Strings represent attribute names; element tokens are Tuples.
-SetElemPath = Tuple[str, str, Any]  # ('#set', set_name, element_id_key)
-ListElemPath = Tuple[str, str, Any]  # ('#list', list_name, element_id_key)
-
-
-def path_for_set_element(set_name: str, element_id: Any) -> SetElemPath:
-    """
-    Build a path token for a set element node.
-
-    Parameters
-    ----------
-    set_name : str
-        Logical name of the set (e.g. "taskPlan").
-    element_id : Any
-        The element's ID; will be normalized to a GUID hashable key.
-
-    Returns
-    -------
-    SetElemPath
-        The path token representing that element.
-    """
-    return ("#set", set_name, guid_key(element_id))
-
-
-def path_for_list_element(list_name: str, element_id: Any) -> ListElemPath:
-    """
-    Build a path token for a list element node.
-
-    Parameters
-    ----------
-    list_name : str
-        Logical name of the list (e.g. "waypoints").
-    element_id : Any
-        The element's ID; will be normalized to a GUID hashable key.
-
-    Returns
-    -------
-    ListElemPath
-        The path token representing that element.
-    """
-    return ("#list", list_name, guid_key(element_id))
 
 
 class SetCollection:
@@ -299,7 +146,7 @@ def get_at_path(obj: object, path: Sequence[Any]) -> object:
     """
     cur = obj
     for seg in path:
-        cur = getattr(cur, seg)
+        cur = getattr(cur, seg, None)
     return cur
 
 
@@ -334,37 +181,30 @@ class OverlayView:
     4) If the attribute equals a collection name, return the collection.
     """
 
-    __slots__ = ("_base", "_overlay", "_collections", "_overlays_by_path", "_path")
+    __slots__ = ("_base", "_collections", "_overlays_by_path", "_path")
 
     def __init__(
         self,
         base: Any,
-        overlay: Optional[Any],
         collections: Mapping[str, Any],
         overlays_by_path: Mapping[Tuple[Any, ...], Any] = (),
         path: Tuple[Any, ...] = (),
     ) -> None:
         self._base = base
-        self._overlay = overlay
         self._collections = collections
         self._overlays_by_path = dict(overlays_by_path or {})
-        self._path = tuple(path or ())
+        self._path = tuple(path)
 
     def __getattr__(self, name: str) -> Any:
         sub_path = self._path + (name,)
         if sub_path in self._overlays_by_path:
             base_sub = getattr(self._base, name) if hasattr(self._base, name) else None
-            overlay_sub = self._overlays_by_path[sub_path]
             return OverlayView(
                 base=base_sub,
-                overlay=overlay_sub,
                 collections=self._collections,
                 overlays_by_path=self._overlays_by_path,
                 path=sub_path,
             )
-
-        if self._overlay is not None and hasattr(self._overlay, name):
-            return getattr(self._overlay, name)
 
         if hasattr(self._base, name):
             return getattr(self._base, name)
@@ -378,14 +218,6 @@ class OverlayView:
         return getattr(self, key)
 
 
-def _attach_collections_attr(base: Any, collections: MutableMapping[str, Any]) -> None:
-    """Attach a `.collections` dict on IDL base objects for convenience."""
-    try:
-        setattr(base, "collections", collections)
-    except Exception:
-        pass
-
-
 @dataclass(frozen=True)
 class CombinedSample:
     """
@@ -397,26 +229,23 @@ class CombinedSample:
         The base/root sample (e.g., the metadata or generalization-containing message).
     collections : Dict[str, Any], optional
         Per-node collections bag at the *current node*. Nested nodes use `overlays_by_path`.
-    overlay : Any, optional
-        A top-level overlay object (legacy top-level merge).
     overlays_by_path : Dict[Tuple[Any, ...], Any], optional
         Nested overlays keyed by their absolute attribute/element path.
     """
 
     base: Any
     collections: Dict[str, Any] = field(default_factory=dict)
-    overlay: Optional[Any] = None
     overlays_by_path: Dict[Tuple[Any, ...], Any] = field(default_factory=dict)
 
     def __post_init__(self):
-        _attach_collections_attr(self.base, self.collections)
+        # Bolt on collections for convenience
+        setattr(self.base, "collections", self.collections)
 
     @property
     def view(self) -> OverlayView:
         """Return a read-only overlay view for user access."""
         return OverlayView(
             self.base,
-            self.overlay,
             self.collections,
             overlays_by_path=self.overlays_by_path,
             path=(),
@@ -427,22 +256,18 @@ class CombinedSample:
         return CombinedSample(
             base=self.base,
             collections=self.collections,
-            overlay=overlay,
-            overlays_by_path=self.overlays_by_path,
+            overlays_by_path=self.overlays_by_path.update({(), overlay}),
         )
 
     def clone_with_collections(self, updates: Mapping[str, Any]) -> "CombinedSample":
         """Return a new CombinedSample with updated local collections bag."""
-        new = dict(self.collections)
-        new.update(updates)
         return CombinedSample(
             base=self.base,
-            collections=new,
-            overlay=self.overlay,
+            collections=self.collections.update(updates),
             overlays_by_path=self.overlays_by_path,
         )
 
-    def add_overlay_at(self, path: Sequence[Any], overlay_obj: Any) -> "CombinedSample":
+    def add_overlay_at(self, overlay_obj: Any, path: Sequence[Any] = ()) -> "CombinedSample":
         """
         Register a nested overlay at an absolute path.
 
@@ -458,13 +283,10 @@ class CombinedSample:
         CombinedSample
             A new CombinedSample with the overlay registered.
         """
-        new_overlays = dict(self.overlays_by_path)
-        new_overlays[tuple(path)] = overlay_obj
         return CombinedSample(
             base=self.base,
             collections=self.collections,
-            overlay=self.overlay,
-            overlays_by_path=new_overlays,
+            overlays_by_path=self.overlays_by_path.update({tuple(path): overlay_obj}),
         )
 
 
@@ -477,10 +299,6 @@ class CombinedBuilder:
     ----------
     base : Any
         The base/root object to publish.
-    collections : Dict[str, Any], optional
-        Root-level collections bag (kept for backwards compatibility).
-    overlay : Any, optional
-        Legacy top-level specialization overlay.
     collections_by_path : Dict[Tuple[Any, ...], Dict[str, Any]], optional
         Per-node collections bags keyed by absolute path.
     overlays_by_path : Dict[Tuple[Any, ...], Any], optional
@@ -488,44 +306,13 @@ class CombinedBuilder:
     """
 
     base: Any
-    collections: Dict[str, Any] = field(default_factory=dict)
-    overlay: Optional[Any] = None
-    collections_by_path: Dict[Tuple[Any, ...], Dict[str, Any]] = field(default_factory=dict)
     overlays_by_path: Dict[Tuple[Any, ...], Any] = field(default_factory=dict)
+    collections_by_path: Dict[Tuple[Any, ...], Dict[str, Any]] = field(default_factory=dict)
 
     def __post_init__(self):
-        _attach_collections_attr(self.base, self.collections)
+        setattr(self.base, "collections", self.collections_by_path.setdefault((), {}))
 
-    def ensure_collection(self, name: str, kind: str) -> Any:
-        """
-        Ensure a root-level collection exists.
-
-        Parameters
-        ----------
-        name : str
-            Name of the collection bag.
-        kind : {'set', 'list'}
-            Collection kind.
-
-        Returns
-        -------
-        Any
-            A `SetCollection` or `ListCollection` instance.
-        """
-        bag = self.collections
-        existing = bag.get(name)
-        if existing is not None:
-            return existing
-        if kind == "set":
-            created = SetCollection()
-        elif kind == "list":
-            created = ListCollection()
-        else:
-            raise ValueError("kind must be 'set' or 'list'")
-        bag[name] = created
-        return created
-
-    def ensure_collection_at(self, path: Sequence[Any], name: str, kind: str) -> Any:
+    def ensure_collection_at(self, name: str, kind: str, path: Sequence[str] = ()) -> Any:
         """
         Ensure a per-node collection exists at a given path.
 
@@ -543,11 +330,7 @@ class CombinedBuilder:
         Any
             A `SetCollection` or `ListCollection` instance.
         """
-        p = tuple(path or ())
-        if not p:
-            # root-level bag
-            return self.ensure_collection(name, kind)
-
+        p = tuple(path)
         bag = self.collections_by_path.setdefault(p, {})
         existing = bag.get(name)
         if existing is not None:
@@ -561,7 +344,7 @@ class CombinedBuilder:
         bag[name] = created
         return created
 
-    def collections_at(self, path: Sequence[Any]) -> Dict[str, Any]:
+    def collections_at(self, path: Sequence[str] = ()) -> Dict[str, Any]:
         """
         Get (and create if absent) the per-node collections bag at a given path.
 
@@ -575,16 +358,9 @@ class CombinedBuilder:
         Dict[str, Any]
             The collections bag dictionary.
         """
-        p = tuple(path or ())
-        if not p:
-            return self.collections
-        return self.collections_by_path.setdefault(p, {})
+        return self.collections_by_path.setdefault(tuple(path), {})
 
-    def use_specialization(self, spec_obj: Any) -> None:
-        """Set a top-level specialization overlay."""
-        self.overlay = spec_obj
-
-    def use_specialization_at(self, path: Sequence[Any], spec_obj: Any) -> None:
+    def use_specialization_at(self, spec_obj: Any, path: Sequence[str] = ()) -> None:
         """
         Set a specialization overlay at a given path.
 
@@ -595,13 +371,13 @@ class CombinedBuilder:
         spec_obj : Any
             Specialization object instance.
         """
-        self.overlays_by_path[tuple(path or ())] = spec_obj
+        self.overlays_by_path[tuple(path)] = spec_obj
 
-    def overlay_at(self, path: Sequence[Any]) -> Optional[Any]:
+    def overlay_at(self, path: Sequence[str] = ()) -> Optional[Any]:
         """Get the specialization overlay at a given path, if any."""
-        return self.overlays_by_path.get(tuple(path or ()))
+        return self.overlays_by_path.get(tuple(path))
 
-    def spawn_child(self, path: Sequence[Any], base_obj: Any) -> "CombinedBuilder":
+    def spawn_child(self, base_obj: Any, path: Sequence[str] = ()) -> "CombinedBuilder":
         """
         Spawn a child builder scoped to `path`, rebasing nested overlays/collections.
 
@@ -620,9 +396,7 @@ class CombinedBuilder:
         CombinedBuilder
             A child builder that carries only the relevant nested bags/overlays.
         """
-        p = tuple(path or ())
-
-        child_collections_root = self.collections_by_path.get(p, {})
+        p = tuple(path)
 
         child_collections_by_path: Dict[Tuple[Any, ...], Dict[str, Any]] = {}
         for k, v in self.collections_by_path.items():
@@ -639,8 +413,6 @@ class CombinedBuilder:
 
         return CombinedBuilder(
             base=base_obj,
-            collections=child_collections_root,
-            overlay=None,
             collections_by_path=child_collections_by_path,
             overlays_by_path=child_overlays,
         )
@@ -667,16 +439,14 @@ class BuilderEditView:
         return get_at_path(self._builder.base, self._path) if self._path else self._builder.base
 
     def _overlay_at(self):
-        return self._builder.overlays_by_path.get(self._path) if self._path else self._builder.overlay
+        return self._builder.overlays_by_path.get(self._path)
 
     def _child_view(self, name: str) -> "BuilderEditView":
         return BuilderEditView(self._builder, self._path + (name,))
 
     def __getattr__(self, name: str):
         if name == "collections":
-            if self._path:
-                return self._builder.collections_by_path.setdefault(self._path, {})
-            return self._builder.collections
+            return self._builder.collections_by_path.setdefault(self._path, {})
 
         overlay = self._overlay_at()
         base = self._base_at()
@@ -729,8 +499,6 @@ class CombinedEditHandle:
         return self._builder
 
     def __getattr__(self, name: str):
-        if name in ("collections",):
-            return getattr(self._root_view, name)
         return getattr(self._root_view, name)
 
     def __setattr__(self, name: str, value: Any):
@@ -835,12 +603,12 @@ class ElementHandle:
             at = gen_paths[0]
         at = tuple(at)
         spec = spec_type()
-        self._b.use_specialization_at(self._path + at, spec)
+        self._b.use_specialization_at(spec, self._path + at)
         return spec
 
     def ensure_collection(self, name: str, kind: str) -> Any:
         """Ensure a collection under this element node."""
-        return self._b.ensure_collection_at(self._path, name, kind)
+        return self._b.ensure_collection_at(name, kind, self._path)
 
     @property
     def collections(self) -> Dict[str, Any]:
@@ -877,7 +645,7 @@ class SetEditor:
         if element_id is None:
             element_id = generate_guid()
         setattr(elem, "elementID", element_id)
-        coll = self._b.ensure_collection_at(self._node_path, self._name, "set")
+        coll = self._b.ensure_collection_at(self._name, "set", self._node_path)
         coll.add(elem)
         elem_path = self._node_path + path_for_set_element(self._name, element_id)
         return ElementHandle(self._b, elem_path, elem)
@@ -887,7 +655,7 @@ class SetEditor:
         if getattr(elem, "elementID") == NIL_GUID:
             setattr(elem, "elementID", generate_guid())
         element_id = getattr(elem, "elementID")
-        coll = self._b.ensure_collection_at(self._node_path, self._name, "set")
+        coll = self._b.ensure_collection_at(self._name, "set", self._node_path)
         coll.add(elem)
         elem_path = self._node_path + path_for_set_element(self._name, element_id)
         return ElementHandle(self._b, elem_path, elem)
@@ -908,7 +676,7 @@ class ListEditor:
         if element_id is None:
             element_id = generate_guid()
         setattr(elem, "elementID", element_id)
-        coll = self._b.ensure_collection_at(self._node_path, self._name, "list")
+        coll = self._b.ensure_collection_at(self._name, "list", self._node_path)
         coll.append(elem)
         elem_path = self._node_path + path_for_list_element(self._name, element_id)
         return ElementHandle(self._b, elem_path, elem)
@@ -918,7 +686,7 @@ class ListEditor:
         if getattr(elem, "elementID") == NIL_GUID:
             setattr(elem, "elementID", generate_guid())
         element_id = getattr(elem, "elementID")
-        coll = self._b.ensure_collection_at(self._node_path, self._name, "list")
+        coll = self._b.ensure_collection_at(self._name, "list", self._node_path)
         coll.append(elem)
         elem_path = self._node_path + path_for_list_element(self._name, element_id)
         return ElementHandle(self._b, elem_path, elem)
@@ -1244,29 +1012,17 @@ class UmaaWriterAdapter:
         if auto_init_collections:
             cmap_base = classify_obj_by_umaa(b.base)
             for path, finfo in cmap_base.items():
-                if not path:
-                    continue
-                field = path[-1]
-                if field.endswith("SetMetadata"):
-                    base = field[: -len("SetMetadata")]
-                    b.ensure_collection_at((), base, "set")
-                elif field.endswith("ListMetadata"):
-                    base = field[: -len("ListMetadata")]
-                    b.ensure_collection_at((), base, "list")
+                if UMAAConcept.LARGE_SET in finfo.classifications:
+                    name = path[-1][: -len("SetMetadata")]
+                    b.ensure_collection_at(name, "set", path)
+                if UMAAConcept.LARGE_LIST in finfo.classifications:
+                    name = path[-1][: -len("ListMetadata")]
+                    b.ensure_collection_at(name, "list", path)
 
         if spec_at is not None and spec_type is not None:
             spec = spec_type()
             p = tuple(spec_at)
-            b.use_specialization_at(p, spec)
-
-            if auto_init_collections:
-                for attr in dir(spec):
-                    if attr.endswith("SetMetadata"):
-                        base = attr[: -len("SetMetadata")]
-                        b.ensure_collection_at(p, base, "set")
-                    elif attr.endswith("ListMetadata"):
-                        base = attr[: -len("ListMetadata")]
-                        b.ensure_collection_at(p, base, "list")
+            b.use_specialization_at(spec, p)
 
         return CombinedEditHandle(b)
 

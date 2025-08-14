@@ -1,8 +1,6 @@
 import pytest
 
 from umaapy.util.multi_topic_support import (
-    guid_key,
-    guid_equal,
     SetCollection,
     ListCollection,
     CombinedSample,
@@ -13,11 +11,16 @@ from umaapy.util.multi_topic_support import (
     ElementHandle,
     SetEditor,
     ListEditor,
-    path_for_set_element,
-    path_for_list_element,
 )
 
-from umaapy.util.umaa_utils import NumericGUID, HashableNumericGUID
+from umaapy.util.umaa_utils import (
+    NumericGUID,
+    HashableNumericGUID,
+    path_for_set_element,
+    path_for_list_element,
+    guid_key,
+    guid_equal,
+)
 
 
 def mk_guid(n: int) -> NumericGUID:

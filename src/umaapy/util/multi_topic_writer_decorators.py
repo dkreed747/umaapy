@@ -26,74 +26,6 @@ from umaapy.util.umaa_utils import topic_from_type
 from umaapy.util.uuid_factory import generate_guid, NIL_GUID
 
 
-def _resolve_items_with_attr_path(
-    builder: "CombinedBuilder",
-    name: str,
-    attr_path: Tuple[str, ...],
-) -> List[Any]:
-    """
-    Robustly fetch a collection for `name` from `builder` at a nested `attr_path`.
-
-    Returns runtime items (list, possibly via to_runtime()).
-    """
-
-    bagmap = getattr(builder, "collections_by_path", None)
-    if isinstance(bagmap, dict):
-        bag = bagmap.get(tuple(attr_path))
-        if isinstance(bag, dict) and name in bag:
-            coll = bag[name]
-            items = coll.to_runtime() if hasattr(coll, "to_runtime") else list(coll)
-            return items
-
-    if hasattr(builder, "get_collection_at"):
-        try:
-            coll = builder.get_collection_at(attr_path, name)
-            if coll is not None:
-                items = coll.to_runtime() if hasattr(coll, "to_runtime") else list(coll)
-                return items
-        except Exception as e:
-            pass
-    if hasattr(builder, "get_collection"):
-        try:
-            try:
-                coll = builder.get_collection(name, path=attr_path)
-            except TypeError:
-                coll = builder.get_collection(name, attr_path)  # some code uses positional
-            if coll is not None:
-                items = coll.to_runtime() if hasattr(coll, "to_runtime") else list(coll)
-                return items
-        except Exception as e:
-            pass
-    coll_store = getattr(builder, "collections", {})
-    node: Any = coll_store
-    if attr_path:
-        for seg in attr_path:
-            if isinstance(node, dict) and seg in node:
-                node = node[seg]
-            else:
-                node = None
-                break
-        if isinstance(node, dict):
-            coll = node.get(name)
-            if coll is not None:
-                items = coll.to_runtime() if hasattr(coll, "to_runtime") else list(coll)
-                return items
-
-    if isinstance(coll_store, dict):
-        key = (tuple(attr_path), name)
-        if key in coll_store:
-            coll = coll_store[key]
-            items = coll.to_runtime() if hasattr(coll, "to_runtime") else list(coll)
-            return items
-
-    if not attr_path and isinstance(coll_store, dict) and name in coll_store:
-        coll = coll_store.get(name)
-        items = coll.to_runtime() if hasattr(coll, "to_runtime") else list(coll)
-        return items
-
-    return []
-
-
 class GenSpecWriter(WriterDecorator):
     """
     Path-aware UMAA Generalization/Specialization writer.
@@ -106,11 +38,10 @@ class GenSpecWriter(WriterDecorator):
         Optional mapping hook to resolve child names when specialization topics differ.
     """
 
-    def __init__(self, attr_path: Sequence[str] = (), resolve_child_by_topic_name=None):
+    def __init__(self, attr_path: Sequence[str] = ()):
         super().__init__()
         self.attr_path: Tuple[str, ...] = tuple(attr_path)
         self._children: Dict[str, WriterNode] = {}
-        self._resolve = resolve_child_by_topic_name
 
     def attach_children(self, **children: WriterNode) -> None:
         super().attach_children(**children)
@@ -122,7 +53,7 @@ class GenSpecWriter(WriterDecorator):
 
     @staticmethod
     def _spec_topic_name(spec: Any) -> str:
-        return getattr(spec, "specializationTopic", None) or topic_from_type(type(spec))
+        return topic_from_type(type(spec))
 
     @staticmethod
     def _bind_generalization(gen: Any, topic: str, spec_id: Any, spec_ts: Optional[Any]) -> None:
@@ -131,40 +62,24 @@ class GenSpecWriter(WriterDecorator):
         if spec_ts is not None:
             setattr(gen, "specializationTimestamp", spec_ts)
 
-    def _resolve_child(self, topic: str) -> Optional[WriterNode]:
-        child = self._children.get(topic)
-        if child is None and self._resolve is not None:
-            mapped = self._resolve(topic)
-            child = self._children.get(mapped)
-        return child
-
     def publish(self, node: WriterNode, builder: CombinedBuilder) -> None:
-        # Locate specialization and generalization at the path
-        if self.attr_path:
-            spec = builder.overlays_by_path.get(self.attr_path)
-            gen_obj = get_at_path(builder.base, self.attr_path)
-            child_collections = builder.collections_by_path.get(self.attr_path, {})
-        else:
-            spec = builder.overlay
-            gen_obj = builder.base
-            child_collections = builder.collections
+
+        spec = builder.overlays_by_path.get(self.attr_path)
+        gen_obj = get_at_path(builder.base, self.attr_path)
 
         if spec is None:
             return
 
         topic = self._spec_topic_name(spec)
-        child = self._resolve_child(topic)
+        child = self._children.get(topic)
         if child is None:
             raise RuntimeError(f"GenSpecWriter: no child WriterNode for specialization topic '{topic}'")
 
         # Ensure specialization ID/topic exist
         if getattr(spec, "specializationReferenceID") == NIL_GUID:
-            try:
-                setattr(spec, "specializationReferenceID", generate_guid())
-            except Exception:
-                pass
+            setattr(spec, "specializationReferenceID", generate_guid())
 
-        child.publish(CombinedBuilder(base=spec, collections=child_collections))
+        child.publish(CombinedBuilder(base=spec, collections_by_path=builder.collections_by_path))
 
         sid, sts = self._spec_identity(spec)
         self._bind_generalization(gen_obj, topic, sid, sts)
@@ -175,46 +90,25 @@ class LargeSetWriter(WriterDecorator):
         self,
         set_name: str,
         attr_path: Tuple[str, ...] = (),
-        expected_child_topic: Optional[str] = None,
     ) -> None:
         super().__init__()
         self.set_name = set_name
         self.attr_path = tuple(attr_path)
-        self.expected_child_topic = expected_child_topic
         self._children: Dict[str, WriterNode] = {}
 
     def attach_children(self, **children: "WriterNode") -> None:
         super().attach_children(**children)
         self._children = getattr(self, "_children", {})
 
-    def _select_child(self) -> "WriterNode":
-        if self.expected_child_topic and self.expected_child_topic in self._children:
-            return self._children[self.expected_child_topic]
-        if len(self._children) == 1:
-            return next(iter(self._children.values()))
-        raise RuntimeError(
-            f"LargeSetWriter('{self.set_name}'): cannot select child "
-            f"(expected={self.expected_child_topic}, available={list(self._children.keys())})"
-        )
-
     def _meta_struct(self, parent: Any) -> Any:
-        # Traverse attr_path to the container that should hold the "*SetMetadata"
-        container = parent
-        for seg in self.attr_path:
-            if not hasattr(container, seg):
-                raise AttributeError(
-                    f"{type(container).__name__} missing segment '{seg}' while resolving attr_path {self.attr_path}"
-                )
-            container = getattr(container, seg)
+        ps = get_at_path(parent, self.attr_path)
+        if ps is None:
+            raise RuntimeError(f"Cannot get attribute at {self.attr_path} on {type(parent).__name__}")
+        metadata = getattr(ps, f"{self.set_name}SetMetadata", None)
+        if metadata is None:
+            raise RuntimeError(f"Cannot find {self.set_name}SetMetadata on {type(ps).__name__}")
 
-        attr = f"{self.set_name}SetMetadata"
-        if hasattr(container, attr):
-            return getattr(container, attr)
-
-        if hasattr(container, "element") and hasattr(container.element, attr):
-            return getattr(container.element, attr)
-
-        raise AttributeError(f"{type(container).__name__} missing {attr}")
+        return metadata
 
     def _get_set_id(self, meta: Any) -> Any:
         return getattr(meta, "setID")
@@ -234,11 +128,7 @@ class LargeSetWriter(WriterDecorator):
         setattr(elem, "setID", set_id)
 
     def publish(self, node: "WriterNode", builder: "CombinedBuilder") -> None:
-        base_type = type(builder.base).__name__
-
         meta = self._meta_struct(builder.base)
-        if meta is None:
-            return
 
         current_id = getattr(meta, "setID", None)
         if current_id is None or current_id == NIL_GUID:
@@ -247,13 +137,17 @@ class LargeSetWriter(WriterDecorator):
 
         set_id = getattr(meta, "setID")
 
-        items = _resolve_items_with_attr_path(builder, self.set_name, self.attr_path)
-        setattr(meta, "size", int(len(items)))
+        items = builder.collections_at(self.attr_path).get(self.set_name, None)
 
-        if not items:
+        if items is None:
             return
 
-        child = self._select_child()
+        items = items.to_runtime()
+        setattr(meta, "size", int(len(items)))
+
+        if len(self._children) != 1:
+            RuntimeError(f"LargeSetWriter Decorator only expects one child, but has {self._children.keys()}")
+        child = next(iter(self._children.values()))
 
         last_id = last_ts = None
         for idx, e in enumerate(items):
@@ -261,7 +155,7 @@ class LargeSetWriter(WriterDecorator):
             elem_id, elem_ts = getattr(e, "elementID"), getattr(e, "elementTimestamp", None)
 
             elem_path = path_for_set_element(self.set_name, elem_id) + tuple(self.attr_path)
-            child_b = builder.spawn_child(elem_path, e)
+            child_b = builder.spawn_child(e, elem_path)
             child.publish(child_b)
             last_id, last_ts = elem_id, elem_ts
 
@@ -275,45 +169,24 @@ class LargeListWriter(WriterDecorator):
         self,
         list_name: str,
         attr_path: Tuple[str, ...] = (),
-        expected_child_topic: Optional[str] = None,
     ) -> None:
         super().__init__()
         self.list_name = list_name
         self.attr_path = tuple(attr_path)
-        self.expected_child_topic = expected_child_topic
         self._children: Dict[str, WriterNode] = {}
 
     def attach_children(self, **children: "WriterNode") -> None:
         super().attach_children(**children)
         self._children = getattr(self, "_children", {})
 
-    def _select_child(self) -> "WriterNode":
-        if self.expected_child_topic and self.expected_child_topic in self._children:
-            return self._children[self.expected_child_topic]
-        if len(self._children) == 1:
-            return next(iter(self._children.values()))
-        raise RuntimeError(
-            f"LargeListWriter('{self.list_name}'): cannot select child "
-            f"(expected={self.expected_child_topic}, available={list(self._children.keys())})"
-        )
-
     def _meta_struct(self, parent: Any) -> Any:
-        container = parent
-        for seg in self.attr_path:
-            if not hasattr(container, seg):
-                raise AttributeError(
-                    f"{type(container).__name__} missing segment '{seg}' while resolving attr_path {self.attr_path}"
-                )
-            container = getattr(container, seg)
-
-        attr = f"{self.list_name}ListMetadata"
-        if hasattr(container, attr):
-            return getattr(container, attr)
-
-        if hasattr(container, "element") and hasattr(container.element, attr):
-            return getattr(container.element, attr)
-
-        raise AttributeError(f"{type(container).__name__} missing {attr}")
+        ps = get_at_path(parent, self.attr_path)
+        if ps is None:
+            raise RuntimeError(f"Cannot get attribute at {self.attr_path} on {type(parent).__name__}")
+        metadata = getattr(ps, f"{self.set_name}ListMetadata", None)
+        if metadata is None:
+            raise RuntimeError(f"Cannot find {self.set_name}ListMetadata on {type(ps).__name__}")
+        return metadata
 
     def _get_list_id(self, meta: Any) -> Any:
         return getattr(meta, "listID")
@@ -345,11 +218,7 @@ class LargeListWriter(WriterDecorator):
         setattr(elem, "listID", list_id)
 
     def publish(self, node: "WriterNode", builder: "CombinedBuilder") -> None:
-        base_type = type(builder.base).__name__
-
         meta = self._meta_struct(builder.base)
-        if meta is None:
-            return
 
         if getattr(meta, "listID", None) in (None, NIL_GUID):
             new_id = generate_guid()
@@ -357,13 +226,17 @@ class LargeListWriter(WriterDecorator):
 
         list_id = getattr(meta, "listID")
 
-        items = _resolve_items_with_attr_path(builder, self.list_name, self.attr_path)
-        setattr(meta, "size", int(len(items)))
+        items = builder.collections_at(self.attr_path).get(self.list_name, None)
 
-        if not items:
+        if items is None:
             return
 
-        child = self._select_child()
+        items = items.to_runtime()
+
+        setattr(meta, "size", int(len(items)))
+        if len(self._children) != 1:
+            RuntimeError(f"LargeListWriter Decorator only expects one child, but has {self._children.keys()}")
+        child = next(iter(self._children.values()))
 
         # link chain
         for i, e in enumerate(items):
@@ -373,7 +246,7 @@ class LargeListWriter(WriterDecorator):
         for e in items:
             elem_id = getattr(e, "elementID")
             elem_path = path_for_list_element(self.list_name, elem_id) + tuple(self.attr_path)
-            child_b = builder.spawn_child(elem_path, e)
+            child_b = builder.spawn_child(e, elem_path)
             child.publish(child_b)
 
         first_id = getattr(items[0], "elementID")

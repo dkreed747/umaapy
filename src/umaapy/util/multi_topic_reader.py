@@ -105,10 +105,6 @@ class ReaderNode:
     ) -> None:
         self.reader = reader
         self._key_fn = key_fn
-        try:
-            self._key_fn_arity = len(inspect.signature(key_fn).parameters)
-        except Exception:
-            self._key_fn_arity = 1
         self.parent_notify = parent_notify
         self._decorators: Dict[str, ReaderDecorator] = {}
         self._children: Dict[str, Dict[str, ReaderNode]] = {}
@@ -121,8 +117,8 @@ class ReaderNode:
                 def on_data_available(_self, _r):
                     try:
                         self.poll_once()
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        _logger.warning(f"Error encounter in poll_once - {e}")
 
             self.reader.set_listener(_L(), dds.StatusMask.DATA_AVAILABLE)
 
@@ -193,35 +189,6 @@ class ReaderNode:
         - As a last resort, use `take_data()` or `read_data()` and synthesize valid infos.
         """
 
-        def _mk_valid_infos(n: int) -> List[object]:
-            # Create minimal info objects with .valid = True
-            return [types.SimpleNamespace(valid=True) for _ in range(n)]
-
-        # try take()
-        if hasattr(self.reader, "take"):
-            res = self.reader.take()
-            if isinstance(res, tuple) and len(res) == 2:
-                data, infos = res
-                return list(data), list(infos)
-            if isinstance(res, list):
-                return res, _mk_valid_infos(len(res))
-        # try read()
-        if hasattr(self.reader, "read"):
-            res = self.reader.read()
-            if isinstance(res, tuple) and len(res) == 2:
-                data, infos = res
-                return list(data), list(infos)
-            if isinstance(res, list):
-                return res, _mk_valid_infos(len(res))
-        # fallbacks: *data() variants (valid only)
-        if hasattr(self.reader, "take_data"):
-            data = self.reader.take_data()
-            return list(data), _mk_valid_infos(len(data))
-        if hasattr(self.reader, "read_data"):
-            data = self.reader.read_data()
-            return list(data), _mk_valid_infos(len(data))
-        return [], []
-
     def poll_once(self) -> None:
         """
         Drain some samples from the underlying RTI reader and update decorators.
@@ -229,25 +196,13 @@ class ReaderNode:
         On valid samples: run decorators and, upon completion, notify parent with info.
         On invalid/dispose: notify parent immediately with (combined=None, info).
         """
-        data, infos = self._read_with_infos()
-        if not data and not infos:
-            _logger.debug("No data or infos available in poll_once()")
-            return
-
-        # Normalize length mismatch edge cases
-        n = max(len(data), len(infos))
-        data = list(data) + [None] * (n - len(data))
-        infos = list(infos) + [None] * (n - len(infos))
-
-        for sample, info in zip(data, infos):
+        for sample, info in self.reader.take():
             if info is not None and hasattr(info, "valid") and not info.valid:
                 # dispose/unregister/etc.: bubble info upward with no combined
-                _logger.debug(f"Received invalid sample: {type(sample.data)}, info: {info}")
+                _logger.debug(f"Received invalid sample: {type(sample)}, info: {info}")
                 if self.parent_notify is not None:
                     if sample is None:
                         key = object()  # synthetic key for disposals
-                    elif self._key_fn_arity >= 3:
-                        key = self._key_fn(sample, info, self.reader)
                     else:
                         key = self._key_fn(sample)
                     self._info_by_key[key] = info
@@ -258,23 +213,18 @@ class ReaderNode:
                 _logger.debug("Received None sample, skipping")
                 continue
 
-            if self._key_fn_arity >= 3:
-                key = self._key_fn(sample.data, info, self.reader)
-            else:
-                key = self._key_fn(sample.data)
+            key = self._key_fn(sample)
             self._info_by_key[key] = info  # may be None if synthetic
             combined = self._combined_by_key.get(key)
             if combined is None:
-                combined = CombinedSample(base=sample.data)
+                combined = CombinedSample(base=sample)
                 self._combined_by_key[key] = combined
 
-            _logger.debug(
-                f"Forwarding {type(sample.data).__name__.split("_")[-1]} to {len(self._decorators)} decorators"
-            )
+            _logger.debug(f"Forwarding {type(sample).__name__.split("_")[-1]} to {len(self._decorators)} decorators")
             for deco in list(self._decorators.values()):
                 _logger.debug(f"Calling decorator {deco.name}")
                 try:
-                    for sig in deco.on_reader_data(self, key, combined, sample.data):
+                    for sig in deco.on_reader_data(self, key, combined, sample):
                         if sig.complete and self.parent_notify is not None:
                             self.parent_notify(
                                 sig.key, self._combined_by_key.get(sig.key, combined), self._info_by_key.get(sig.key)

@@ -1,4 +1,4 @@
-from typing import Any, Type, Sequence, List, Set, Dict, Tuple
+from typing import Any, Type, Iterable, List, Set, Dict, Tuple, Optional
 import logging
 import inspect
 import importlib
@@ -126,6 +126,129 @@ class HashableIdentifierType(IdentifierType):
             id=self.id.to_umaa(),
             parentID=self.parentID.to_umaa(),
         )
+
+
+def guid_key(value: Any) -> Any:
+    """
+    Return a hashable key for UMAA NumericGUID-like values.
+
+    - If `value` is a `HashableNumericGUID`, return it as-is.
+    - If `value` is a `NumericGUID`, wrap it in `HashableNumericGUID`.
+    - Otherwise, return the value unchanged.
+
+    Parameters
+    ----------
+    value : Any
+        A GUID or other identifier value.
+
+    Returns
+    -------
+    Any
+        A hashable key suitable for use in dicts/sets.
+    """
+    if isinstance(value, HashableNumericGUID):
+        return value
+    if isinstance(value, NumericGUID):
+        return HashableNumericGUID(value)
+    if isinstance(value, HashableIdentifierType):
+        return value
+    if isinstance(value, IdentifierType):
+        return HashableIdentifierType(value)
+    return value
+
+
+def guid_equal(a: Any, b: Any) -> bool:
+    """
+    Robust equality across (NumericGUID|HashableNumericGUID|other) values.
+
+    Parameters
+    ----------
+    a, b : Any
+        Values to compare.
+
+    Returns
+    -------
+    bool
+        True when the underlying GUID values (or raw values) match.
+    """
+    ak = guid_key(a)
+    bk = guid_key(b)
+    try:
+        return ak == bk
+    except Exception:
+        return a == b
+
+
+def make_instance_key_fn(key_fields: Iterable[str]):
+    """
+    Build a reader key function that returns a tuple of UMAA-aware key fields.
+
+    - Accepts *dotted* attribute names (e.g., "header.sessionID").
+    - GUID fields are normalized via guid_key() for stable hashing/equality.
+
+    Example:
+        key_fn = make_instance_key_fn(("sessionID", "destination", "source"))
+    """
+    fields = tuple(key_fields)
+
+    def _fn(sample):
+        return tuple([guid_key(getattr(sample, field)) for field in fields if getattr(sample, field, None) is not None])
+
+    _fn.__signature__ = inspect.Signature(parameters=[inspect.Parameter("sample", inspect.Parameter.POSITIONAL_ONLY)])
+    return _fn
+
+
+def infer_umaa_key_fields(dtype: type) -> tuple[str, ...]:
+    """
+    Try to infer stable UMAA key fields for a type using classify_obj_by_umaa.
+    Falls back to common UMAA naming patterns.
+    """
+    f_info: Optional[UMAAFieldInfo] = classify_obj_by_umaa(dtype()).get((), None)
+    out = set()
+    if f_info is not None:
+        for classification in f_info.classifications:
+            out.update(classification.keys)
+        return tuple(sorted(out))
+
+
+def path_for_set_element(set_name: str, element_id: Any) -> Tuple[str, str, Any]:
+    """
+    Build a path token for a set element node.
+
+    Parameters
+    ----------
+    set_name : str
+        Logical name of the set (e.g. "taskPlan").
+    element_id : Any
+        The element's ID; will be normalized to a GUID hashable key.
+
+    Returns
+    -------
+    SetElemPath
+        The path token representing that element.
+        Tuple[str, str, Any] ('#set', set_name, element_id_key)
+    """
+    return ("#set", set_name, guid_key(element_id))
+
+
+def path_for_list_element(list_name: str, element_id: Any) -> Tuple[str, str, Any]:
+    """
+    Build a path token for a list element node.
+
+    Parameters
+    ----------
+    list_name : str
+        Logical name of the list (e.g. "waypoints").
+    element_id : Any
+        The element's ID; will be normalized to a GUID hashable key.
+
+    Returns
+    -------
+    ListElemPath
+        The path token representing that element.
+        Tuple[str, str, Any] ('#list', list_name, element_id_key)
+    """
+    return ("#list", list_name, guid_key(element_id))
 
 
 def topic_from_type(umaa_type: Type) -> str:
