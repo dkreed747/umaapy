@@ -114,3 +114,13 @@ def build_identifier_type(source_id: str, parent_id: str) -> UMAA_Common_Identif
     identifier.id = guid_from_string(source_id)
     identifier.parentID = guid_from_string(parent_id)
     return identifier
+
+
+def generate_identifier_type() -> UMAA_Common_IdentifierType:
+    """
+    Generate a new UMAA_Common_IdentifierType with random IDs.
+
+    :return: A new UMAA_Common_IdentifierType with generated IDs.
+    :rtype: UMAA_Common_IdentifierType
+    """
+    return UMAA_Common_IdentifierType(id=generate_guid(), parentID=generate_guid())

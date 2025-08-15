@@ -7,3 +7,4 @@ core
     report_consumer
     report_provider
     command_provider
+    command_consumer
