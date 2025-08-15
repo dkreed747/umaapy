@@ -270,6 +270,21 @@ class LargeListWriter(WriterDecorator):
         items = items.to_runtime()
         print(f"Large List Publish Items: {items}")
 
+        # Handle empty list explicitly
+        if not items:
+            setattr(meta, "size", 0)
+            # Use NIL_GUID for required GUID fields; None for optional timestamp
+            try:
+                setattr(meta, "startingElementID", NIL_GUID)
+            except Exception:
+                pass
+            try:
+                setattr(meta, "updateElementID", NIL_GUID)
+                setattr(meta, "updateElementTimestamp", None)
+            except Exception:
+                pass
+            return
+
         setattr(meta, "size", int(len(items)))
         if len(self._children) != 1:
             RuntimeError(f"LargeListWriter Decorator only expects one child, but has {self._children.keys()}")

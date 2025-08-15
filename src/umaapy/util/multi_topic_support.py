@@ -170,15 +170,15 @@ def set_at_path(root: object, path: Sequence[Any], value: object) -> None:
 
 
 class OverlayView:
-    """
-    Read-only overlay view supporting nested overlays and per-node collections.
+    """Read-only overlay view supporting nested overlays and per-node collections.
 
     Attribute resolution order:
-    1) If a nested overlay is registered for the next attribute hop, return a new
+
+    1. If a nested overlay is registered for the next attribute hop, return a new
        OverlayView scoped to that subpath.
-    2) If the top-level overlay has the attribute, return it.
-    3) Otherwise, return the attribute from the base object.
-    4) If the attribute equals a collection name, return the collection.
+    2. If the top-level overlay has the attribute, return it.
+    3. Otherwise, return the attribute from the base object.
+    4. If the attribute equals a collection name, return the collection.
     """
 
     __slots__ = ("_base", "_collections", "_overlays_by_path", "_path")
@@ -1069,22 +1069,34 @@ class UmaaWriterAdapter:
         b = self._top.new()
 
         if auto_init_collections:
+            # Initialize collections detected on the base object
             cmap_base = classify_obj_by_umaa(b.base)
             for path, finfo in cmap_base.items():
-                # if UMAAConcept.LARGE_SET in finfo.classifications:
-                #     name = path[-1][: -len("SetMetadata")]
-                #     b.ensure_collection_at(name, "set", path)
-                # if UMAAConcept.LARGE_LIST in finfo.classifications:
-                #     name = path[-1][: -len("ListMetadata")]
-                #     b.ensure_collection_at(name, "list", path)
                 if UMAAConcept.LARGE_LIST in finfo.classifications:
                     name = path[-1][: -len("ListMetadata")]
-                    parent_path = path[:-1]  # attach at the generalization node
+                    parent_path = path[:-1]
                     b.ensure_collection_at(name, "list", parent_path)
                 if UMAAConcept.LARGE_SET in finfo.classifications:
                     name = path[-1][: -len("SetMetadata")]
                     parent_path = path[:-1]
                     b.ensure_collection_at(name, "set", parent_path)
+
+            # If a specialization is requested, also initialize collections under it
+            if spec_at is not None and spec_type is not None:
+                try:
+                    cmap_spec = classify_obj_by_umaa(spec_type())
+                except Exception:
+                    cmap_spec = {}
+                prefix = tuple(spec_at)
+                for path, finfo in cmap_spec.items():
+                    if UMAAConcept.LARGE_LIST in finfo.classifications:
+                        name = path[-1][: -len("ListMetadata")]
+                        parent_path = prefix + tuple(path[:-1])
+                        b.ensure_collection_at(name, "list", parent_path)
+                    if UMAAConcept.LARGE_SET in finfo.classifications:
+                        name = path[-1][: -len("SetMetadata")]
+                        parent_path = prefix + tuple(path[:-1])
+                        b.ensure_collection_at(name, "set", parent_path)
 
         if spec_at is not None and spec_type is not None:
             spec = spec_type()
