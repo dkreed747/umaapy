@@ -120,7 +120,7 @@
             name="Report">
 
             <base_name>
-                <element>BuiltinQosSnippetLib::QosPolicy.Reliability.BestEffort</element>
+                <element>BuiltinQosSnippetLib::QosPolicy.Reliability.Reliable</element>
                 <element>BuiltinQosSnippetLib::QosPolicy.History.KeepLast_1</element>
             </base_name>
 

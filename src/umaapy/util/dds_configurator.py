@@ -1,9 +1,29 @@
-from typing import Type, Optional, List, Tuple
+from typing import Type, Optional, List, Tuple, Any, Dict, Iterable
 from enum import Enum
 import threading
 import rti.connextdds as dds
+import importlib
+import inspect
 
-from umaapy.util.umaa_utils import topic_from_type
+from umaapy.util.umaa_utils import (
+    topic_from_type,
+    classify_obj_by_umaa,
+    UMAAConcept,
+    get_specializations_from_generalization,
+    infer_umaa_key_fields,
+    make_instance_key_fn,
+)
+
+from umaapy.util.multi_topic_support import (
+    UmaaReaderAdapter,
+    UmaaFilteredReaderAdapter,
+    UmaaWriterAdapter,
+)
+
+from umaapy.util.multi_topic_reader import ReaderNode
+from umaapy.util.multi_topic_reader_decorators import GenSpecReader, LargeSetReader, LargeListReader, PassthroughReader
+from umaapy.util.multi_topic_writer import WriterNode, TopLevelWriter
+from umaapy.util.multi_topic_writer_decorators import GenSpecWriter, LargeSetWriter, LargeListWriter
 
 
 class UmaaQosProfileCategory(Enum):
@@ -227,6 +247,78 @@ class DDSConfigurator:
         # Return a DataReader bound to the filtered topic
         return dds.DataReader(self.subscriber, cft, qos=reader_qos), cft
 
+    def get_umaa_reader(self, data_type: Type) -> dds.DataReader:
+        """
+        Build a UMAA-aware reader graph for `data_type` and return an adapter
+        that mimics `dds.DataReader` (listener interface + `read/take`).
+
+        Parameters
+        ----------
+        data_type : Type
+            The top-level IDL type (class) to read.
+
+        Returns
+        -------
+        dds.DataReader
+            An adapter that behaves like a DataReader but yields `CombinedSample`s.
+        """
+        root_reader = self.get_reader(data_type)
+        # Adapter will own the root listener and forward events
+        root_node = ReaderNode(
+            root_reader,
+            key_fn=make_instance_key_fn(infer_umaa_key_fields(data_type)),
+            parent_notify=None,
+            use_listener=False,
+        )
+        self._mt_augment_reader_node(root_node, data_type)
+        return UmaaReaderAdapter(root_node, root_reader)
+
+    def get_filtered_umaa_reader(
+        self,
+        data_type: Type,
+        filter_expression: str,
+        filter_parameters: Optional[List[str]] = None,
+    ) -> dds.DataReader:
+        """
+        Same as :meth:`get_umaa_reader`, but the root is bound to a ContentFilteredTopic.
+
+        Child readers are left unfiltered (typical UMAA pattern).
+        """
+        root_reader, cft = self.get_filtered_reader(
+            data_type,
+            filter_expression=filter_expression,
+            filter_parameters=filter_parameters,
+        )
+        root_node = ReaderNode(
+            root_reader,
+            key_fn=make_instance_key_fn(infer_umaa_key_fields(data_type)),
+            parent_notify=None,
+            use_listener=False,
+        )
+        self._mt_augment_reader_node(root_node, data_type)
+        return UmaaFilteredReaderAdapter(root_node, root_reader, cft)
+
+    def get_umaa_writer(self, data_type: Type) -> dds.DataWriter:
+        """
+        Build a UMAA-aware writer graph and return an adapter that behaves like
+        a `dds.DataWriter`, including `.new()` and `.write()` publishing semantics.
+
+        Parameters
+        ----------
+        data_type : Type
+            The top-level IDL type (class) to write.
+
+        Returns
+        -------
+        dds.DataWriter
+            An adapter wrapping a `TopLevelWriter`.
+        """
+        root_writer = self.get_writer(data_type)
+        root_node = WriterNode(root_writer)
+        self._mt_augment_writer_node(root_node, data_type)
+        top = TopLevelWriter(root_node, base_factory=data_type)
+        return UmaaWriterAdapter(root_node, top, root_writer)
+
     @classmethod
     def reset(cls) -> None:
         """
@@ -246,3 +338,199 @@ class DDSConfigurator:
             if hasattr(inst, "_initialized"):
                 delattr(inst, "_initialized")
             inst.__init__(inst._domain_id, inst._qos_file)
+
+    def _mt_classify_type(self, umaa_type: Type) -> Dict[Tuple[str, ...], Any]:
+        """Return the classification map for a default-constructed instance."""
+        return classify_obj_by_umaa(umaa_type())
+
+    @staticmethod
+    def _attr_base_from_metadata(field_name: str) -> Optional[str]:
+        """Extract base name from `*SetMetadata` / `*ListMetadata`."""
+        if field_name.endswith("SetMetadata"):
+            return field_name[: -len("SetMetadata")]
+        if field_name.endswith("ListMetadata"):
+            return field_name[: -len("ListMetadata")]
+        return None
+
+    def _mt_iter_generalizations(self, umaa_type: Type) -> List[Tuple[Tuple[str, ...], Type, Dict[str, Type]]]:
+        """
+        Find generalization fields and resolve their specialization topics.
+
+        Returns
+        -------
+        list[(path, gen_type, {topic_short: spec_type, ...}), ...]
+        """
+        cmap = self._mt_classify_type(umaa_type)
+        out = []
+        for path, finfo in cmap.items():
+            if UMAAConcept.GENERALIZATION in finfo.classifications:
+                gen_t = finfo.python_type
+                specs = get_specializations_from_generalization(gen_t)  # {'RouteObjectiveType': <class ...>, ...}
+                out.append((tuple(path), gen_t, specs))
+        return out
+
+    def _mt_resolve_collection_element_type(self, parent_cls: Type, attr_base: str, kind: str) -> Type:
+        """
+        Resolve collection element type by UMAA naming rule:
+
+        `<ParentClassName><CapitalizedAttrName><Set|List>Element`
+        """
+
+        mod = importlib.import_module("umaapy.umaa_types")
+        parent_name = parent_cls.__name__
+        cap_attr = attr_base[:1].upper() + attr_base[1:]
+        suffix = "SetElement" if kind == "set" else "ListElement"
+        candidate = f"{parent_name}{cap_attr}{suffix}"
+        try:
+            return getattr(mod, candidate)
+        except AttributeError as e:
+            raise RuntimeError(f"Could not resolve {kind} element type '{candidate}' in umaapy.umaa_types") from e
+
+    def _mt_parent_type_for_path(self, umaa_type: Type, path: Tuple[str, ...]) -> Type:
+        """Type of the object that directly owns the last path segment."""
+        if not path:
+            return umaa_type
+        inst = umaa_type()
+        for seg in path[:-1]:
+            inst = getattr(inst, seg)
+        return type(inst)
+
+    def _mt_iter_large_sets(self, umaa_type: Type) -> List[Tuple[str, Type]]:
+        """
+        Find large set metadata fields and element types.
+
+        Returns
+        -------
+        list[(set_base_name, element_type), ...]
+        """
+        cmap = self._mt_classify_type(umaa_type)
+        out: List[Tuple[str, Type]] = []
+        for path, finfo in cmap.items():
+            if UMAAConcept.LARGE_SET in finfo.classifications and path:
+                field = path[-1]
+                base = self._attr_base_from_metadata(field)
+                if not base:
+                    continue
+                parent_cls = self._mt_parent_type_for_path(umaa_type, tuple(path))
+                elem_t = self._mt_resolve_collection_element_type(parent_cls, base, "set")
+                out.append((path, base, elem_t))
+        return out
+
+    def _mt_iter_large_lists(self, umaa_type: Type) -> List[Tuple[str, Type]]:
+        """
+        Find large list metadata fields and element types.
+
+        Returns
+        -------
+        list[(list_base_name, element_type), ...]
+        """
+        cmap = self._mt_classify_type(umaa_type)
+        out: List[Tuple[str, Type]] = []
+        for path, finfo in cmap.items():
+            if UMAAConcept.LARGE_LIST in finfo.classifications and path:
+                field = path[-1]
+                base = self._attr_base_from_metadata(field)
+                if not base:
+                    continue
+                parent_cls = self._mt_parent_type_for_path(umaa_type, tuple(path))
+                elem_t = self._mt_resolve_collection_element_type(parent_cls, base, "list")
+                out.append((path, base, elem_t))
+        return out
+
+    def _is_set_element_type(self, t) -> bool:
+        # Works with generated UMAA types like ...MissionPlanSetElement, ...TaskPlansSetElement, etc.
+        try:
+            return t.__name__.endswith("SetElement")
+        except Exception:
+            return False
+
+    def _default_attr_path_for(self, parent_type) -> tuple:
+        # For SetElement parents, UMAA puts nested set/list metadata under ".element"
+        return ("element",) if self._is_set_element_type(parent_type) else ()
+
+    def _mt_augment_reader_node(self, node: ReaderNode, t: type) -> None:
+        attached_any = False
+
+        # Large Sets
+        for path, set_name, elem_t in self._mt_iter_large_sets(t):
+            node.register_decorator(set_name, LargeSetReader(set_name, attr_path=path))
+            attached_any = True
+
+            elem_reader = self.get_reader(elem_t)
+            child = ReaderNode(
+                elem_reader,
+                key_fn=make_instance_key_fn(infer_umaa_key_fields(elem_t)),
+                parent_notify=None,
+                use_listener=True,
+            )
+            node.attach_child(set_name, topic_from_type(elem_t), child)
+            self._mt_augment_reader_node(child, elem_t)
+
+        # Large Lists
+        for path, list_name, elem_t in self._mt_iter_large_lists(t):
+            node.register_decorator(list_name, LargeListReader(list_name, attr_path=path))
+            attached_any = True
+
+            elem_reader = self.get_reader(elem_t)
+            child = ReaderNode(
+                elem_reader,
+                key_fn=make_instance_key_fn(infer_umaa_key_fields(elem_t)),
+                parent_notify=None,
+                use_listener=True,
+            )
+            node.attach_child(list_name, topic_from_type(elem_t), child)
+            self._mt_augment_reader_node(child, elem_t)
+
+        # Generalization/Specializations
+        for path, _gen_t, specs in self._mt_iter_generalizations(t):
+            node.register_decorator("gen_spec", GenSpecReader(attr_path=tuple(path)))
+            attached_any = True
+
+            for topic_short, spec_t in specs.items():
+                spec_reader = self.get_reader(spec_t)
+                child = ReaderNode(
+                    spec_reader,
+                    key_fn=make_instance_key_fn(infer_umaa_key_fields(spec_t)),
+                    parent_notify=None,
+                    use_listener=True,
+                )
+                node.attach_child("gen_spec", topic_from_type(spec_t), child)
+                self._mt_augment_reader_node(child, spec_t)
+
+        # Leaf: nothing UMAA-ish attached
+        if not attached_any:
+            node.register_decorator("passthrough", PassthroughReader())
+
+    def _mt_augment_writer_node(self, node: WriterNode, t: Type) -> None:
+        # Large Sets
+        for path, set_name, elem_t in self._mt_iter_large_sets(t):
+            topic = topic_from_type(elem_t)
+            node.register_decorator(
+                set_name,
+                LargeSetWriter(set_name, attr_path=path),
+            )
+            elem_writer = self.get_writer(elem_t)
+            child = WriterNode(elem_writer)
+            node.attach_child(set_name, topic, child)
+            self._mt_augment_writer_node(child, elem_t)
+
+        # Large Lists
+        for path, list_name, elem_t in self._mt_iter_large_lists(t):
+            topic = topic_from_type(elem_t)
+            node.register_decorator(
+                list_name,
+                LargeListWriter(list_name, attr_path=path),
+            )
+            elem_writer = self.get_writer(elem_t)
+            child = WriterNode(elem_writer)
+            node.attach_child(list_name, topic, child)
+            self._mt_augment_writer_node(child, elem_t)
+
+        # Generalization/Specializations
+        for path, _gen_t, specs in self._mt_iter_generalizations(t):
+            node.register_decorator("gen_spec", GenSpecWriter(attr_path=path))
+            for topic_short, spec_t in specs.items():
+                spec_writer = self.get_writer(spec_t)
+                child = WriterNode(spec_writer)
+                node.attach_child("gen_spec", topic_from_type(spec_t), child)
+                self._mt_augment_writer_node(child, spec_t)

@@ -72,6 +72,9 @@ class Timestamp:
             return NotImplemented
         return (self.seconds, self.nanoseconds) == (other.seconds, other.nanoseconds)
 
+    def __hash__(self):
+        return hash((self.seconds, self.nanoseconds))
+
     def __lt__(self, other: "Timestamp") -> bool:
         """
         Less-than comparison for ordering timestamps.

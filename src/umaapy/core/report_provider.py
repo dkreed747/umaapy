@@ -7,7 +7,7 @@ from umaapy.util.event_processor import Command, MEDIUM
 from umaapy.util.dds_configurator import UmaaQosProfileCategory, WriterListenerEventType
 from umaapy import get_event_processor, get_configurator
 from umaapy.util.timestamp import Timestamp
-from umaapy.util.umaa_utils import validate_report
+from umaapy.util.umaa_utils import UMAAConcept, validate_umaa_obj
 
 from umaapy.umaa_types import UMAA_Common_IdentifierType
 
@@ -36,7 +36,7 @@ class ReportProvider(dds.DataWriterListener):
     ):
         super().__init__()
         # Validate that the data type adheres to UMAA report specifications
-        if not validate_report(data_type()):
+        if not validate_umaa_obj(data_type(), UMAAConcept.REPORT):
             raise RuntimeError(f"'{data_type.__name__.split('_')[-1]}' is not a valid UMAA report.")
         # Store configuration
         self._source_id: UMAA_Common_IdentifierType = source

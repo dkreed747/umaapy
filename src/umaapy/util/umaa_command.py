@@ -5,7 +5,7 @@ import logging
 
 import rti.connextdds as dds
 
-from umaapy.util.umaa_utils import validate_command, validate_ack, validate_status, validate_execution_status
+from umaapy.util.umaa_utils import validate_umaa_obj, UMAAConcept
 from umaapy.util.dds_configurator import UmaaQosProfileCategory
 from umaapy import get_configurator
 from umaapy.util.timestamp import Timestamp
@@ -68,14 +68,14 @@ class UmaaCommand(Command):
         self._source_id: UMAA_Common_IdentifierType = source
 
         # Validate the command sample
-        if not validate_command(command):
+        if not validate_umaa_obj(command, UMAAConcept.COMMAND):
             raise RuntimeError(f"'{type(command).__name__.split('_')[-1]}' is not a valid UMAA command.")
         self.command: Any = command
         self._logger: logging.Logger = logger.getChild(guid_pretty_print(command.sessionID))
 
         # Validate acknowledgement writer type
         ack_type = ack_writer.topic.type()
-        if not validate_ack(ack_type):
+        if not validate_umaa_obj(ack_type, UMAAConcept.ACKNOWLEDGEMENT):
             raise RuntimeError(
                 f"'{ack_type.__class__.__name__.split('_')[-1]}' is not a valid UMAA command acknowledgement."
             )
@@ -83,14 +83,14 @@ class UmaaCommand(Command):
 
         # Validate status writer type
         status_type = status_writer.topic.type()
-        if not validate_status(status_type):
+        if not validate_umaa_obj(status_type, UMAAConcept.STATUS):
             raise RuntimeError(f"'{status_type.__class__.__name__.split('_')[-1]}' is not a valid UMAA status.")
         self._status_writer: dds.DataWriter = status_writer
 
         # Validate optional execution-status writer
         if execution_status_writer:
             exec_type = execution_status_writer.topic.type()
-            if not validate_execution_status(exec_type):
+            if not validate_umaa_obj(exec_type, UMAAConcept.EXECUTION_STATUS):
                 raise RuntimeError(
                     f"'{exec_type.__class__.__name__.split('_')[-1]}' is not a valid UMAA execution status."
                 )
@@ -347,11 +347,11 @@ class UmaaCommandFactory:
         self.logger: Optional[logging.Logger] = None
 
         # Validate provided types
-        if not validate_ack(ack_type()):
+        if not validate_umaa_obj(ack_type(), UMAAConcept.ACKNOWLEDGEMENT):
             raise RuntimeError(f"'{ack_type.__name__.split('_')[-1]}' is not a valid UMAA acknowledgement.")
-        if not validate_status(status_type()):
+        if not validate_umaa_obj(status_type(), UMAAConcept.STATUS):
             raise RuntimeError(f"'{status_type.__name__.split('_')[-1]}' is not a valid UMAA status.")
-        if execution_status_type and not validate_execution_status(execution_status_type()):
+        if execution_status_type and not validate_umaa_obj(execution_status_type(), UMAAConcept.EXECUTION_STATUS):
             raise RuntimeError(f"'{execution_status_type.__name__.split('_')[-1]}' is not a valid UMAA exec status.")
 
         # Create DDS DataWriters for each sample type
