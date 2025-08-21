@@ -13,8 +13,12 @@ from importlib.metadata import version as _get_pkg_version
 sys.path.insert(0, os.path.abspath("../src"))
 
 project = "UMAAPy"
-release = _get_pkg_version("umaapy")
-version = _get_pkg_version("umaapy")
+try:
+    release = _get_pkg_version("umaapy")
+    version = _get_pkg_version("umaapy")
+except Exception:
+    # Fallback during CI when package isn't installed yet
+    release = version = "0.0.0"
 copyright = "2025, Devon Reed"
 author = "Devon Reed"
 
@@ -62,7 +66,9 @@ html_sidebars = {
     ]
 }
 
-mermaid_cmd = [r"C:\Users\Dkree\AppData\Roaming\npm\mmdc.cmd"]
+mermaid_env_cmd = os.getenv("MERMAID_CMD")
+if mermaid_env_cmd:
+    mermaid_cmd = [mermaid_env_cmd]
 
 latex_elements = {
     "preamble": r"""

@@ -23,7 +23,7 @@ def setup_logging(level="INFO", log_file=None):
         root.addHandler(fh)
 
 
-setup_logging(level="DEBUG")
+setup_logging(level=os.getenv("UMAAPY_LOG_LEVEL", "INFO"))
 
 DOMAIN_ID = int(os.getenv("DOMAIN_ID", "0"))
 QOS_FILE = ""
