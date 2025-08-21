@@ -58,9 +58,10 @@ where = ["src"]
 line-length = 120
 target-version = ['py313']
 extend-exclude = '''
-/(
-    umaa_types\.py
-)/
+(
+  src/umaapy/umaa_types\.py
+  | umaa_types\.py$
+)
 '''
 
 [tool.pytest.ini_options]
@@ -71,3 +72,13 @@ addopts = "--capture=tee-sys --cov --cov-report=xml:coverage.xml --cov-report=te
 
 [tool.setuptools_scm]
 version_file = "src/umaapy/_version.py"
+
+[tool.coverage.run]
+omit = [
+  "src/umaapy/umaa_types.py"
+]
+
+[tool.coverage.report]
+omit = [
+  "src/umaapy/umaa_types.py"
+]
