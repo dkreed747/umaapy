@@ -39,7 +39,10 @@ docs = [
 ]
 
 [project.urls]
-homepage = "https://git.psu.edu/psu-sweng/sweng-894/umaapy"
+Homepage = "https://github.com/dkreed747/umaapy"
+Repository = "https://github.com/dkreed747/umaapy"
+Issues = "https://github.com/dkreed747/umaapy/issues"
+Documentation = "https://dkreed747.github.io/umaapy/"
 
 [tool.setuptools]
 package-dir = { "" = "src" }

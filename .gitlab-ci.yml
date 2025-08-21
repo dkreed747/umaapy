@@ -1,33 +1,10 @@
-image: "python:3.13-slim"
+stages: []
 
-stages:
-  - lint
-  - build
-  - test
-  - deploy
+## GitLab CI is no longer used. See .github/workflows/* for GitHub Actions equivalents.
 
-lint:
-  stage: lint
-  tags:
-    - dkr-run
-  before_script:
-    - pip install black
-  script:
-    - black --check --diff ./src/umaapy
-  allow_failure: true
+## File retained for historical reference only.
 
-docker:
-  stage: build
-  tags:
-    - dkr-run
-  image: docker:stable
-  script:
-    - docker info
-    - echo "$REGISTRY_TOKEN" | docker login --username "$REGISTRY_USER" --password-stdin "$REGISTRY"
-    - docker build --target develop -f ./Dockerfile -t dkreed747/umaapy-dev:$CI_COMMIT_SHORT_SHA .
-  artifacts:
-    expire_in: 1h
-    reports: {}
+## ---- end ----
 
 umaapy:
   stage: build
