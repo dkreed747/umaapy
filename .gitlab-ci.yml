@@ -16,7 +16,7 @@ umaapy:
       artifacts: false
   before_script:
     - pip install --upgrade pip build setuptools-scm twine
-    - rtiddsgen -language Python -inputIdl idls/UMAA -r -I idls -joinInputFiles -joinedFilesOutputName umaa_types -d ./src/umaapy
+    - python -m umaapy.tools.generate_types
   script:
     - python -m build
   artifacts:
@@ -32,7 +32,7 @@ test:
       artifacts: true
   before_script:
     - pip install --upgrade pip build setuptools-scm twine
-    - cp $RTI_LICENSE $NDDSHOME/rti_license.dat
+    - python -m umaapy.tools.generate_types
   script:
     - pip install --target wheel_lib dist/*.whl
     - export PYTHONPATH="$CI_PROJECT_DIR/wheel_lib:$PYTHONPATH"

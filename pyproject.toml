@@ -7,7 +7,7 @@ name = "umaapy"
 dynamic = ["version"]
 description = "Python UMAA SDK for rapid autonomy development"
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.12"
 
 classifiers = [
     "Programming Language :: Python :: 3",
@@ -20,7 +20,7 @@ authors = [
 ]
 
 dependencies = [
-  "rti.connext>=7.5.0"
+  "cyclonedds>=0.10.5"
 ]
 
 [project.optional-dependencies]

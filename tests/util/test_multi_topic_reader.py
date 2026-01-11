@@ -1,6 +1,6 @@
 import pytest
 import time
-import rti.connextdds as dds
+from umaapy.dds_backend import dds
 
 from umaapy import get_configurator, reset_dds_participant
 from umaapy.util.uuid_factory import generate_guid, generate_identifier_type

@@ -2,7 +2,7 @@ import pytest
 from typing import override
 from time import sleep
 import logging
-import rti.connextdds as dds
+from umaapy.dds_backend import dds
 
 from umaapy import get_configurator, reset_dds_participant
 from umaapy.core.report_provider import ReportProvider, WriterListenerEventType

@@ -3,7 +3,7 @@ import threading
 import time
 import logging
 
-import rti.connextdds as dds
+from umaapy.dds_backend import dds
 
 from umaapy.util.umaa_utils import validate_umaa_obj, UMAAConcept
 from umaapy.util.dds_configurator import UmaaQosProfileCategory

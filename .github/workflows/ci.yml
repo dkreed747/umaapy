@@ -32,7 +32,6 @@ jobs:
   #   needs: [lint]
   #   runs-on: ubuntu-latest
   #   env:
-  #     # If you configure a license on the runner, set RTI_LICENSE_FILE or NDDSHOME accordingly.
   #     PYTHONPATH: src
   #   steps:
   #     - uses: actions/checkout@v4
@@ -46,6 +45,9 @@ jobs:
   #         python -m pip install --upgrade pip
   #         pip install -e .[tests]
   #         pip install pytest-timeout
+  #     - name: Generate UMAA types (Cyclone DDS idlc)
+  #       run: |
+  #         python -m umaapy.tools.generate_types
   #     - name: Run tests
   #       run: |
   #         pytest --maxfail=1 -q --cov --cov-report=xml:coverage.xml --cov-report=term-missing --junitxml=report.xml

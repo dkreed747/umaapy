@@ -6,7 +6,7 @@ from threading import Condition
 import re
 from uuid import UUID
 
-import rti.connextdds as dds
+from umaapy.dds_backend import dds
 
 from umaapy.util.provider import Provider
 from umaapy.util.command_session import CommandSession
@@ -242,7 +242,13 @@ class CommandConsumer(dds.DataWriterListener):
         :type status: dds.PublicationMatchedStatus
         """
         try:
-            current_handles = set(writer.matched_subscriptions)
+            try:
+                current_handles = set(writer.matched_subscriptions)
+            except Exception:
+                self._logger.debug(
+                    "Publication matched introspection is not available for the current DDS backend."
+                )
+                return
 
             for handle, provider in self._providers_by_handle.items():
                 if handle not in current_handles:

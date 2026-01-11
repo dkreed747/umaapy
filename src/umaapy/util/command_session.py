@@ -9,7 +9,7 @@ from typing import Optional, Callable, Any, Dict, Tuple, List, Union, TYPE_CHECK
 import logging
 from threading import Condition
 
-import rti.connextdds as dds
+from umaapy.dds_backend import dds
 
 from umaapy import get_event_processor
 from umaapy.util.umaa_utils import HashableNumericGUID

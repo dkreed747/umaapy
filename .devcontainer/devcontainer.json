@@ -1,10 +1,22 @@
 {
   "name": "UMAAPy",
-  "dockerComposeFile": [
-    "../docker-compose.yml"
-  ],
-  "service": "umaapy-dev",
+  "build": {
+    "dockerfile": "../Dockerfile",
+    "context": "..",
+    "target": "develop"
+  },
   "workspaceFolder": "/workspace",
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspace/${localWorkspaceFolderBasename},type=bind,consistency=cached",
+  "containerEnv": {
+    "DISPLAY": "host.docker.internal:0.0",
+    "CYCLONEDDS_URI": "file:///workspace/${localWorkspaceFolderBasename}/.devcontainer/cyclonedds.xml"
+  },
+  "capAdd": [
+    "SYS_PTRACE"
+  ],
+  "securityOpt": [
+    "seccomp=unconfined"
+  ],
   "customizations": {
     "vscode": {
       "extensions": [
@@ -19,7 +31,29 @@
         "streetsidesoftware.code-spell-checker",
         "redhat.vscode-xml",
         "lextudio.restructuredtext"
-      ]
+      ],
+      "settings": {
+        "[python]": {
+          "editor.defaultFormatter": "ms-python.black-formatter",
+          "editor.formatOnSave": true,
+          "editor.tabSize": 4,
+          "editor.insertSpaces": true,
+          "editor.detectIndentation": false
+        },
+        "python.testing.pytestArgs": [
+          "tests"
+        ],
+        "black-formatter.args": [
+          "--config",
+          "${workspaceFolder}/pyproject.toml"
+        ],
+        "python.testing.unittestEnabled": false,
+        "python.testing.pytestEnabled": true,
+        "python.testing.autoTestDiscoverOnSaveEnabled": true,
+        "files.trimTrailingWhitespace": true,
+        "files.trimFinalNewlines": true,
+        "files.insertFinalNewline": true
+      }
     }
   }
 }

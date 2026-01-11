@@ -5,7 +5,7 @@ Welcome to UMAAPy's documentation!
    :scale: 50
 
 The UMAAPy SDK provides a comprehensive software framework for autonomous maritime operations,
-leveraging the RTI Connext DDS Python API for robust, scalable, and
+leveraging the Eclipse Cyclone DDS Python API for robust, scalable, and
 real-time data communication. UMAAPy aims to facilitate the rapid development and
 deployment of maritime autonomy systems by abstracting core UMAA components and
 integrating them seamlessly through event-driven mechanisms.

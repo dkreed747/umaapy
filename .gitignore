@@ -140,3 +140,6 @@ ehthumbs.db
 
 # RTI
 *.dat
+
+# Cyclone types
+src/UMAA

@@ -1,5 +1,5 @@
 import logging
-import rti.connextdds as dds
+from umaapy.dds_backend import dds
 from typing import Any, override
 
 from umaapy.core.command_provider import CommandProvider

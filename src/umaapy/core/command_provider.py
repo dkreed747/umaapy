@@ -2,7 +2,7 @@ from typing import Any, Type, Optional
 from uuid import UUID
 import logging
 from concurrent.futures import Future
-import rti.connextdds as dds
+from umaapy.dds_backend import dds
 
 from umaapy import get_configurator, get_event_processor
 from umaapy.util.umaa_command import UmaaCommand, UmaaCommandFactory
@@ -102,11 +102,15 @@ class CommandProvider(dds.DataReaderListener):
                 if self._active_command_future is None:
                     continue
                 try:
-                    if self._active_command.command.sessionID != reader.key_value(info.instance_handle).sessionID:
+                    key_sample = reader.key_value(info.instance_handle)
+                    if key_sample is None:
+                        raise RuntimeError("Unable to resolve key value for disposed sample.")
+                    if self._active_command.command.sessionID != key_sample.sessionID:
                         continue
                 except Exception as e:
-                    self._logger.error(f"Unable to get key data for disposed sample this is likely a QoS issue - {e}")
-                    continue
+                    self._logger.error(
+                        f"Unable to get key data for disposed sample; canceling active command by default - {e}"
+                    )
 
                 # Cancel and cleanup based on instance state
                 match info.state.instance_state:

@@ -1,7 +1,7 @@
 from typing import Type, Optional, List, Tuple, Any, Dict, Iterable
 from enum import Enum
 import threading
-import rti.connextdds as dds
+from umaapy.dds_backend import dds
 import importlib
 import inspect
 

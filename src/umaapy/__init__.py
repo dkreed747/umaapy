@@ -1,8 +1,6 @@
 import os, logging, sys
+from typing import TYPE_CHECKING
 import importlib.resources
-
-from umaapy.util.dds_configurator import DDSConfigurator
-from umaapy.util.event_processor import EventProcessor
 
 
 def setup_logging(level="INFO", log_file=None):
@@ -32,23 +30,32 @@ with importlib.resources.path("umaapy.resource", "umaapy_qos_lib.xml") as module
     QOS_FILE = os.getenv("QOS_FILE", str(module_qos_path))
 
 
-def get_configurator() -> DDSConfigurator:
+def get_configurator() -> "DDSConfigurator":
+    from umaapy.util.dds_configurator import DDSConfigurator
+
     return DDSConfigurator(DOMAIN_ID, QOS_FILE)
 
 
-def get_event_processor() -> EventProcessor:
+def get_event_processor() -> "EventProcessor":
+    from umaapy.util.event_processor import EventProcessor
+
     return EventProcessor()
 
 
 def reset_dds_participant():
+    from umaapy.util.dds_configurator import DDSConfigurator
+
     DDSConfigurator.reset()
     get_configurator()
 
 
 def reset_thread_pool():
+    from umaapy.util.event_processor import EventProcessor
+
     EventProcessor.reset()
     get_event_processor()
 
 
-get_configurator()
-get_event_processor()
+if TYPE_CHECKING:
+    from umaapy.util.dds_configurator import DDSConfigurator
+    from umaapy.util.event_processor import EventProcessor

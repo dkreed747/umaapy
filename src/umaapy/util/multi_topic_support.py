@@ -41,7 +41,7 @@ from typing import (
     TYPE_CHECKING,
 )
 
-import rti.connextdds as dds
+from umaapy.dds_backend import dds
 
 from umaapy.util.umaa_utils import (
     guid_key,

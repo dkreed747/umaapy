@@ -36,7 +36,7 @@ extensions = [
 ]
 autosummary_generate = True  # turn on autosummary
 
-autodoc_mock_imports = ["rti.connextdds", "umaapy.umaa_types"]
+autodoc_mock_imports = ["cyclonedds", "umaapy.umaa_types"]
 
 templates_path = ["_templates"]
 exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]

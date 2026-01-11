@@ -9,3 +9,10 @@ class TestTypes:
 
     def test_import_global_pose_report(self):
         from umaapy.umaa_types import UMAA_SA_GlobalPoseStatus_GlobalPoseReportType
+
+    def test_idlc_generated_module_available(self):
+        import UMAA
+        from UMAA.SA import GlobalPoseStatus
+
+        assert hasattr(GlobalPoseStatus, "GlobalPoseReportType")
+        assert hasattr(GlobalPoseStatus, "GlobalPoseReportTypeTopic")

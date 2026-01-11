@@ -6,12 +6,12 @@
 from typing import override, Callable
 import logging
 
-from rti.connextdds import DataReaderListener, DataReader
+from umaapy.dds_backend import dds
 
 _logger = logging.getLogger(__name__)
 
 
-class ReaderListener(DataReaderListener):
+class ReaderListener(dds.DataReaderListener):
     """
     Bridges a simple callable to the DDS DataReaderListener interface.
 
@@ -19,12 +19,12 @@ class ReaderListener(DataReaderListener):
     :type callback: Callable[[DataReader], None]
     """
 
-    def __init__(self, callback: Callable[[DataReader], None]):
+    def __init__(self, callback: Callable[[dds.DataReader], None]):
         super().__init__()
         self._cb: Callable[[DataReader], None] = callback
 
     @override
-    def on_data_available(self, reader: DataReader):
+    def on_data_available(self, reader: dds.DataReader):
         """
         Handle the DDS on_data_available event by delegating to the provided callback.
 

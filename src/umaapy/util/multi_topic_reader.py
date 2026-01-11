@@ -20,7 +20,7 @@ import logging
 
 from umaapy.util.multi_topic_support import CombinedSample
 
-import rti.connextdds as dds
+from umaapy.dds_backend import dds
 
 _logger = logging.getLogger(__name__)
 

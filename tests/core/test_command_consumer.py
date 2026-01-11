@@ -5,7 +5,7 @@ from time import sleep
 import logging
 from threading import Condition
 
-import rti.connextdds as dds
+from umaapy.dds_backend import dds
 
 from umaapy.core.command_consumer import CommandConsumer
 from umaapy.core.command_provider import CommandProvider
@@ -68,8 +68,9 @@ class GlobalVectorControlCommandFactory(UmaaCommandFactory):
 
 
 def test_63_synchronous_command_execution():
+    provider_id = build_identifier_type("476c6f62-616c-5665-6374-6f724374726c", "00000000-0000-0000-0000-000000000000")
     global_vector_provider = CommandProvider(
-        build_identifier_type("476c6f62-616c-5665-6374-6f724374726c", "00000000-0000-0000-0000-000000000000"),
+        provider_id,
         GlobalVectorControlCommandFactory(
             GlobalVectorCommandAckReportType, GlobalVectorCommandStatusType, GlobalVectorExecutionStatusReportType, True
         ),
@@ -83,9 +84,9 @@ def test_63_synchronous_command_execution():
         GlobalVectorCommandStatusType,
         GlobalVectorExecutionStatusReportType,
     )
+    test_provider = global_vector_consumer.add_provider(provider_id)
 
     sleep(1)
-    test_provider = global_vector_consumer.get_providers()[0]
     cmd = GlobalVectorCommandType()
     command_session = global_vector_consumer.create_command_session(cmd, test_provider.source)
 
@@ -98,8 +99,9 @@ def test_63_synchronous_command_execution():
 
 
 def test_64_asynchronous_command_execution():
+    provider_id = build_identifier_type("476c6f62-616c-5665-6374-6f724374726c", "00000000-0000-0000-0000-000000000000")
     global_vector_provider = CommandProvider(
-        build_identifier_type("476c6f62-616c-5665-6374-6f724374726c", "00000000-0000-0000-0000-000000000000"),
+        provider_id,
         GlobalVectorControlCommandFactory(
             GlobalVectorCommandAckReportType,
             GlobalVectorCommandStatusType,
@@ -116,12 +118,12 @@ def test_64_asynchronous_command_execution():
         GlobalVectorCommandStatusType,
         GlobalVectorExecutionStatusReportType,
     )
+    test_provider = global_vector_consumer.add_provider(provider_id)
 
     def status_cb(status: GlobalVectorCommandStatusType):
         _logger.info(f"{status_dict[status.commandStatus]}")
 
     sleep(1)
-    test_provider = global_vector_consumer.get_providers()[0]
     cmd = GlobalVectorCommandType()
     command_session = global_vector_consumer.create_command_session(cmd, test_provider.source)
 
@@ -137,8 +139,9 @@ def test_64_asynchronous_command_execution():
 
 
 def test_65_test_command_timeout():
+    provider_id = build_identifier_type("476c6f62-616c-5665-6374-6f724374726c", "00000000-0000-0000-0000-000000000000")
     global_vector_provider = CommandProvider(
-        build_identifier_type("476c6f62-616c-5665-6374-6f724374726c", "00000000-0000-0000-0000-000000000000"),
+        provider_id,
         GlobalVectorControlCommandFactory(
             GlobalVectorCommandAckReportType,
             GlobalVectorCommandStatusType,
@@ -155,9 +158,9 @@ def test_65_test_command_timeout():
         GlobalVectorCommandStatusType,
         GlobalVectorExecutionStatusReportType,
     )
+    test_provider = global_vector_consumer.add_provider(provider_id)
 
     sleep(1)
-    test_provider = global_vector_consumer.get_providers()[0]
     cmd = GlobalVectorCommandType()
     command_session = global_vector_consumer.create_command_session(cmd, test_provider.source)
 
@@ -170,8 +173,9 @@ def test_65_test_command_timeout():
 
 
 def test_66_consumer_callbacks():
+    provider_id = build_identifier_type("476c6f62-616c-5665-6374-6f724374726c", "00000000-0000-0000-0000-000000000000")
     global_vector_provider = CommandProvider(
-        build_identifier_type("476c6f62-616c-5665-6374-6f724374726c", "00000000-0000-0000-0000-000000000000"),
+        provider_id,
         GlobalVectorControlCommandFactory(
             GlobalVectorCommandAckReportType,
             GlobalVectorCommandStatusType,
@@ -188,6 +192,7 @@ def test_66_consumer_callbacks():
         GlobalVectorCommandStatusType,
         GlobalVectorExecutionStatusReportType,
     )
+    test_provider = global_vector_consumer.add_provider(provider_id)
 
     status_lock = Condition()
     times_called = 0
@@ -207,7 +212,6 @@ def test_66_consumer_callbacks():
                 status_lock.notify_all()
 
     sleep(1)
-    test_provider = global_vector_consumer.get_providers()[0]
     cmd = GlobalVectorCommandType()
     command_session = global_vector_consumer.create_command_session(cmd, test_provider.source)
     command_session.add_status_callback(CommandStatusEnumType.ISSUED, status_cb)

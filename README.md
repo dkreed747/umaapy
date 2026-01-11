@@ -5,7 +5,7 @@
 [![PyPI - Version](https://img.shields.io/pypi/v/umaapy.svg)](https://pypi.org/project/umaapy/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-UMAAPy is a Python SDK for building UMAA-compliant maritime autonomy applications on top of RTI Connext DDS. It provides:
+UMAAPy is a Python SDK for building UMAA-compliant maritime autonomy applications on top of Eclipse Cyclone DDS (Python). It provides:
 
 - High-level reader/writer adapters for UMAA multi-topic graphs (generalization/specialization, Large Sets, Large Lists)
 - Convenient editors for composing complex nested messages for publishing
@@ -34,6 +34,12 @@ writer = cfg.get_writer(GlobalPoseReport)
 writer.write(GlobalPoseReport())
 print(len(list(reader.read_data())))
 ```
+
+DDS backend notes
+-----------------
+
+- Cyclone DDS Python does not expose matched subscription introspection, so `CommandConsumer` provider auto-discovery is disabled. Call `add_provider(...)` explicitly when needed.
+- Content filters are applied in the UMAAPy reader wrapper to preserve existing filter syntax; they are not evaluated inside Cyclone DDS itself.
 
 Docs & links
 ------------

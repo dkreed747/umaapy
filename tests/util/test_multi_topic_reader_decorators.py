@@ -2,7 +2,7 @@ import pytest
 import time
 
 from umaapy.util.umaa_utils import NumericGUID
-import rti.connextdds as dds
+from umaapy.dds_backend import dds
 
 from umaapy import get_configurator, reset_dds_participant
 from umaapy.util.uuid_factory import generate_guid

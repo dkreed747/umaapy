@@ -11,7 +11,7 @@ import uuid
 from typing import List, Optional, Tuple
 from itertools import chain
 
-import rti.connextdds as dds
+from umaapy.dds_backend import dds
 from umaapy.umaa_types import UMAA_Common_IdentifierType, UMAA_Common_Measurement_NumericGUID
 
 

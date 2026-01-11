@@ -1,7 +1,7 @@
 import time
 import pytest
 
-import rti.connextdds as dds
+from umaapy.dds_backend import dds
 
 from umaapy.util.umaa_utils import NumericGUID
 from umaapy.util.uuid_factory import generate_guid

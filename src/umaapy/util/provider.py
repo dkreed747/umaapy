@@ -8,7 +8,7 @@ from __future__ import annotations
 from typing import Optional, Dict, TYPE_CHECKING
 from dataclasses import dataclass, field
 
-from rti.connextdds import InstanceHandle
+from umaapy.dds_backend import dds
 
 from umaapy.util.umaa_utils import HashableNumericGUID, HashableIdentifierType
 
@@ -26,14 +26,14 @@ class Provider:
     :param name: Optional display name
     :type name: Optional[str]
     :param reader_handle: DDS instance handle for filtering
-    :type reader_handle: Optional[InstanceHandle]
+    :type reader_handle: Optional[dds.InstanceHandle]
     :param sessions: Active CommandSession objects keyed by session ID
     :type sessions: Dict[HashableNumericGUID, CommandSession]
     """
 
     source: HashableIdentifierType
     name: Optional[str] = None
-    reader_handle: Optional[InstanceHandle] = None
+    reader_handle: Optional[dds.InstanceHandle] = None
     sessions: Dict[HashableNumericGUID, CommandSession] = field(default_factory=dict)
 
     def __repr__(self) -> str:

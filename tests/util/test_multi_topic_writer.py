@@ -1,5 +1,5 @@
 import pytest
-import rti.connextdds as dds
+from umaapy.dds_backend import dds
 import time
 
 from umaapy import get_configurator

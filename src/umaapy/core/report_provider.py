@@ -1,7 +1,7 @@
 from typing import Any, Type, Callable, Union, Dict, List
 from uuid import UUID
 import logging
-import rti.connextdds as dds
+from umaapy.dds_backend import dds
 
 from umaapy.util.event_processor import Command, MEDIUM
 from umaapy.util.dds_configurator import UmaaQosProfileCategory, WriterListenerEventType
