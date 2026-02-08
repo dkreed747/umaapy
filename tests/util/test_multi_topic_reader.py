@@ -11,6 +11,8 @@ from umaapy.umaa_types import (
     UMAA_MM_BaseType_RouteObjectiveType as RouteObjectiveType,
 )
 
+pytestmark = pytest.mark.integration_vendor
+
 
 @pytest.mark.timeout(40)
 def test_reader_builds_combined_sample_and_listener_fires():

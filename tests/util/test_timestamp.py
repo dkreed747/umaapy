@@ -3,6 +3,8 @@ import pytest
 from umaapy.util.timestamp import Timestamp
 from umaapy.umaa_types import UMAA_Common_Measurement_DateTime
 
+pytestmark = pytest.mark.unit
+
 
 def test_now():
     t = Timestamp.now()

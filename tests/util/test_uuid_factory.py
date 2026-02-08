@@ -3,6 +3,8 @@ import pytest
 
 from umaapy.util.uuid_factory import *
 
+pytestmark = pytest.mark.unit
+
 
 def test_guid_to_hex():
     guid_str: str = "00112233-4455-6677-8888-99AABBCCDDEE"

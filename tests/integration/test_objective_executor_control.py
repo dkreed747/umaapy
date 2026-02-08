@@ -14,6 +14,8 @@ from umaapy.umaa_types import (
 
 from umaapy import get_configurator, reset_dds_participant
 
+pytestmark = pytest.mark.integration_vendor
+
 
 @pytest.mark.timeout(30)
 def test_roundtrip_objective_executor_command():

@@ -66,9 +66,15 @@ extend-exclude = '''
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["src"]
 junit_family = "xunit2"
 junit_suite_name = "pytest"
-addopts = "--capture=tee-sys --cov --cov-report=xml:coverage.xml --cov-report=term-missing --maxfail=1 --disable-warnings -q --junitxml=report.xml"
+addopts = "--capture=tee-sys --cov --cov-report=xml:coverage.xml --cov-report=term-missing --maxfail=1 --disable-warnings -q --junitxml=report.xml -m \"not integration_vendor\""
+markers = [
+  "unit: Fast, isolated tests with no live DDS middleware requirements.",
+  "component: Multi-module tests without live vendor middleware dependencies.",
+  "integration_vendor: Tests that require RTI Connext DDS runtime and/or license.",
+]
 
 [tool.setuptools_scm]
 version_file = "src/umaapy/_version.py"

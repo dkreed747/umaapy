@@ -11,6 +11,8 @@ from umaapy.umaa_types import (
     UMAA_MM_BaseType_RouteObjectiveTypeWaypointsListElement as RouteObjectiveTypeWaypointsListElement,
 )
 
+pytestmark = pytest.mark.integration_vendor
+
 
 @pytest.mark.timeout(40)
 def test_writer_publishes_children_before_base_and_sets_metadata():

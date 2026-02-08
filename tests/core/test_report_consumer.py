@@ -12,6 +12,8 @@ from umaapy.util.timestamp import Timestamp
 
 from umaapy.umaa_types import UMAA_SA_GlobalPoseStatus_GlobalPoseReportType as GlobalPoseReportType
 
+pytestmark = pytest.mark.integration_vendor
+
 
 def test_55_consumer_reads_filtered_reports_only():
     reset_dds_participant()

@@ -17,6 +17,8 @@ from umaapy.umaa_types import (
     UMAA_MM_Conditional_DepthConditionalType as DepthConditionalType,
 )
 
+pytestmark = pytest.mark.integration_vendor
+
 
 @pytest.mark.timeout(50)
 def test_genspec_reader_merges_specialization_overlay():

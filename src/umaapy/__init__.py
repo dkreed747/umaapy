@@ -50,5 +50,8 @@ def reset_thread_pool():
     get_event_processor()
 
 
-get_configurator()
-get_event_processor()
+AUTO_INIT = os.getenv("UMAAPY_AUTO_INIT", "1").strip().lower() not in {"0", "false", "no"}
+
+if AUTO_INIT:
+    get_configurator()
+    get_event_processor()

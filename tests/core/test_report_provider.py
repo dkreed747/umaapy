@@ -13,6 +13,7 @@ from umaapy.util.timestamp import Timestamp
 from umaapy.umaa_types import UMAA_Common_IdentifierType, UMAA_SA_GlobalPoseStatus_GlobalPoseReportType
 
 test_logger = logging.getLogger(__name__)
+pytestmark = pytest.mark.integration_vendor
 
 
 class TestCommand(Command):
