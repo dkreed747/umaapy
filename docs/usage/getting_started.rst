@@ -59,7 +59,6 @@ Minimal Command Provider/Consumer
 
    import time
    from umaapy import get_configurator, reset_dds_participant
-   import rti.connextdds as dds
    # Example command types below act as placeholders; replace with actual UMAA types
    from umaapy.umaa_types import (
        UMAA_MM_ObjectiveExecutorControl_ObjectiveExecutorCommandType as CommandType,

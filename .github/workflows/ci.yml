@@ -32,7 +32,7 @@ jobs:
   #   needs: [lint]
   #   runs-on: ubuntu-latest
   #   env:
-  #     # If you configure a license on the runner, set RTI_LICENSE_FILE or NDDSHOME accordingly.
+  #     # If you enable middleware integration tests on runners, set backend-specific env vars accordingly.
   #     PYTHONPATH: src
   #   steps:
   #     - uses: actions/checkout@v4
