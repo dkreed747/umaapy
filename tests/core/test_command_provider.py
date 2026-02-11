@@ -21,6 +21,7 @@ from umaapy.umaa_types import (
 )
 
 _logger = logging.getLogger(__name__)
+pytestmark = pytest.mark.integration_vendor
 
 
 class TestStatusListener(dds.DataReaderListener):

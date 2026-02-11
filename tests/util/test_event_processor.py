@@ -5,6 +5,8 @@ import time
 from concurrent.futures import TimeoutError
 from umaapy.util.event_processor import *
 
+pytestmark = pytest.mark.unit
+
 
 class DummyCommand(Command):
     def __init__(self):

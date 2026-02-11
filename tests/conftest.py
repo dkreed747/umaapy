@@ -4,6 +4,8 @@ import types
 import pathlib
 import pytest
 
+os.environ.setdefault("UMAAPY_AUTO_INIT", "0")
+
 
 def _license_present() -> bool:
     """Detect whether an RTI license file is available.
@@ -25,27 +27,46 @@ def _license_present() -> bool:
 LICENSE_OK = _license_present()
 
 
+def _connext_importable() -> bool:
+    try:
+        import rti.connextdds  # noqa: F401
+        return True
+    except Exception:
+        return False
+
+
+CONNEXT_AVAILABLE = _connext_importable()
+
+
 def _install_stub_modules() -> None:
     """Provide minimal stubs so imports succeed when RTI is unavailable.
 
     This prevents ImportError during test collection so we can cleanly skip tests.
     """
-    # Stub rti.connextdds
-    if "rti.connextdds" not in sys.modules:
+    # Stub only rti.connextdds and preserve a real `rti` package when present.
+    if "rti.connextdds" in sys.modules:
+        return
+
+    try:
+        import rti as rti_pkg  # type: ignore[import-not-found]
+    except Exception:
         rti_pkg = types.ModuleType("rti")
-        connextdds_mod = types.ModuleType("connextdds")
-        rti_pkg.connextdds = connextdds_mod
         sys.modules["rti"] = rti_pkg
-        sys.modules["rti.connextdds"] = connextdds_mod
+
+    connextdds_mod = types.ModuleType("connextdds")
+    rti_pkg.connextdds = connextdds_mod
+    sys.modules["rti.connextdds"] = connextdds_mod
 
 
-if not LICENSE_OK:
+if not CONNEXT_AVAILABLE:
     _install_stub_modules()
 
 
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
     if not LICENSE_OK:
-        skip = pytest.mark.skip(reason="RTI Connext DDS license missing/expired; tests skipped.")
+        skip = pytest.mark.skip(
+            reason="RTI Connext DDS license missing/expired; integration_vendor tests skipped."
+        )
         for item in items:
-            item.add_marker(skip)
-        return
+            if item.get_closest_marker("integration_vendor"):
+                item.add_marker(skip)

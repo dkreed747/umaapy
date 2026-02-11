@@ -28,6 +28,7 @@ Features
 
    usage/installation
    usage/getting_started
+   usage/development
    umaapy/multi_topic_umaa
 
 .. toctree::

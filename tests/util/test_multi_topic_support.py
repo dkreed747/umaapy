@@ -22,6 +22,8 @@ from umaapy.util.umaa_utils import (
     guid_equal,
 )
 
+pytestmark = pytest.mark.component
+
 
 def mk_guid(n: int) -> NumericGUID:
     return NumericGUID(value=tuple([n] * 16))

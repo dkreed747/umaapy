@@ -9,6 +9,8 @@ from umaapy.umaa_types import (
     UMAA_SA_GlobalPoseStatus_GlobalPoseReportTypeTopic,
 )
 
+pytestmark = pytest.mark.integration_vendor
+
 
 def test_get_topic():
     qos_file = str(files("umaapy.resource") / "umaapy_qos_lib.xml")
