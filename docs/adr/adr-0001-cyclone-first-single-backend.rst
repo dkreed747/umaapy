@@ -4,7 +4,7 @@ ADR 0001: Cyclone-First Single-Backend Strategy
 Status
 ------
 
-Proposed (pending human approval)
+Approved
 
 Date
 ----
