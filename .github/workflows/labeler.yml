@@ -12,7 +12,11 @@ jobs:
   label:
     runs-on: ubuntu-latest
     steps:
+      # Checkout PR head so labeler reads config from workspace.
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
       - uses: actions/labeler@v5
         with:
           sync-labels: true
-

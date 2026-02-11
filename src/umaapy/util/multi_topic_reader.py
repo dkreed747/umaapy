@@ -220,7 +220,7 @@ class ReaderNode:
                 combined = CombinedSample(base=sample)
                 self._combined_by_key[key] = combined
 
-            _logger.debug(f"Forwarding {type(sample).__name__.split("_")[-1]} to {len(self._decorators)} decorators")
+            _logger.debug(f"Forwarding {type(sample).__name__.split('_')[-1]} to {len(self._decorators)} decorators")
             for deco in list(self._decorators.values()):
                 _logger.debug(f"Calling decorator {deco.name}")
                 try:
