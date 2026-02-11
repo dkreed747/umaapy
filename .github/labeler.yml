@@ -1,0 +1,22 @@
+type:ci:
+  - changed-files:
+      - any-glob-to-any-file:
+          - ".github/workflows/**"
+          - ".github/labeler.yml"
+
+type:test:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "tests/**"
+
+type:docs:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "docs/**"
+          - "README.md"
+
+type:implementation:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "src/**"
+          - "pyproject.toml"
