@@ -20,6 +20,14 @@ Install:
 pip install umaapy
 ```
 
+Development setup:
+
+```bash
+pip install -e .[tests]
+python -c "import umaapy,inspect; print(umaapy.__file__)"
+pytest -m "not integration_vendor"
+```
+
 Minimal reader/writer:
 
 ```python

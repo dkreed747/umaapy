@@ -6,6 +6,9 @@ import pytest
 
 os.environ.setdefault("UMAAPY_AUTO_INIT", "0")
 
+REPO_ROOT = pathlib.Path(__file__).resolve().parents[1]
+LOCAL_PACKAGE_ROOT = REPO_ROOT / "src" / "umaapy"
+
 
 def _license_present() -> bool:
     """Detect whether an RTI license file is available.
@@ -60,6 +63,32 @@ def _install_stub_modules() -> None:
 
 if not CONNEXT_AVAILABLE:
     _install_stub_modules()
+
+
+def _local_import_hygiene_error() -> str | None:
+    try:
+        import umaapy  # noqa: F401
+    except Exception as exc:
+        return (
+            f"Could not import umaapy ({exc!r}). "
+            "Install the workspace package in editable mode with: pip install -e .[tests]"
+        )
+
+    import_path = pathlib.Path(umaapy.__file__).resolve()
+    try:
+        import_path.relative_to(LOCAL_PACKAGE_ROOT)
+    except ValueError:
+        return (
+            f"import umaapy resolved to '{import_path}', not this workspace source tree '{LOCAL_PACKAGE_ROOT}'. "
+            "Reinstall with: pip install -e .[tests]"
+        )
+    return None
+
+
+def pytest_sessionstart(session: pytest.Session) -> None:
+    error = _local_import_hygiene_error()
+    if error:
+        raise pytest.UsageError(error)
 
 
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:

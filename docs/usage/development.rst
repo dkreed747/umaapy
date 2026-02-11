@@ -1,6 +1,24 @@
 Developing UMAAPy
 =================
 
+Contributor Environment
+-----------------------
+
+Use an editable install so tests and local commands resolve the workspace ``src/`` tree:
+
+.. code-block:: bash
+
+   python -m pip install --upgrade pip
+   pip install -e .[tests]
+
+Verify import resolution points to this checkout (not a stale site-packages install):
+
+.. code-block:: bash
+
+   python -c "import umaapy,inspect; print(umaapy.__file__)"
+
+Expected output ends with ``src/umaapy/__init__.py`` from your local repository path.
+
 Testing Workflow
 ----------------
 
