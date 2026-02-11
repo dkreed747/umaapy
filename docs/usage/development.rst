@@ -8,7 +8,7 @@ UMAAPy tests are classified with explicit pytest markers:
 
 - ``unit``: Fast isolated tests with no live DDS middleware requirements.
 - ``component``: Multi-module tests without live vendor middleware requirements.
-- ``integration_vendor``: Tests that require RTI Connext DDS runtime and/or license.
+- ``integration_vendor``: Tests that require a live DDS runtime (Cyclone-first lane; marker name retained for compatibility).
 
 Default test runs use the fast path and exclude vendor integration tests:
 
@@ -22,7 +22,7 @@ This is equivalent to:
 
    pytest -m "not integration_vendor"
 
-Run only vendor integration tests (for licensed RTI environments):
+Run only middleware integration tests:
 
 .. code-block:: bash
 

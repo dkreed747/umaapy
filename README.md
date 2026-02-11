@@ -5,7 +5,7 @@
 [![PyPI - Version](https://img.shields.io/pypi/v/umaapy.svg)](https://pypi.org/project/umaapy/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-UMAAPy is a Python SDK for building UMAA-compliant maritime autonomy applications on top of RTI Connext DDS. It provides:
+UMAAPy is a Python SDK for building UMAA-compliant maritime autonomy applications on top of DDS middleware, with a Cyclone-first architecture direction for runtime and integration workflows. It provides:
 
 - High-level reader/writer adapters for UMAA multi-topic graphs (generalization/specialization, Large Sets, Large Lists)
 - Convenient editors for composing complex nested messages for publishing
