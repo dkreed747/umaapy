@@ -15,7 +15,7 @@ Verify import resolution points to this checkout (not a stale site-packages inst
 
 .. code-block:: bash
 
-   python -c "import umaapy,inspect; print(umaapy.__file__)"
+   UMAAPY_AUTO_INIT=0 python -c "import umaapy,inspect; print(umaapy.__file__)"
 
 Expected output ends with ``src/umaapy/__init__.py`` from your local repository path.
 

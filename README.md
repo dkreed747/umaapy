@@ -24,7 +24,7 @@ Development setup:
 
 ```bash
 pip install -e .[tests]
-python -c "import umaapy,inspect; print(umaapy.__file__)"
+UMAAPY_AUTO_INIT=0 python -c "import umaapy,inspect; print(umaapy.__file__)"
 pytest -m "not integration_vendor"
 ```
 
