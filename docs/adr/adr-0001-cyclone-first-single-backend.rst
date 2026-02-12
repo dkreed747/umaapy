@@ -47,7 +47,7 @@ Non-Goals
 ---------
 
 - Implementing dual-backend support in the current phase.
-- Removing every historical RTI mention from archived wiki/planning material in this issue.
+- Removing every historical RTI mention from archived wiki and planning material in this issue.
 - Completing all runtime dependency migration in one change set.
 
 Follow-Up
@@ -55,4 +55,4 @@ Follow-Up
 
 1. Rename legacy pytest marker ``integration_vendor`` to ``integration_cyclone``.
 2. Remove RTI package/runtime coupling from packaging and integration code paths.
-3. Update legacy requirements/wiki docs to align with the accepted architecture.
+3. Update legacy requirements and wiki docs to align with the accepted architecture.
