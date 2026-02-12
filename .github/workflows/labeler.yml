@@ -12,10 +12,10 @@ jobs:
   label:
     runs-on: ubuntu-latest
     steps:
-      # Checkout PR head so labeler reads config from workspace.
+      # Checkout trusted base commit so labeler config cannot be modified by PR code.
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
+          ref: ${{ github.event.pull_request.base.sha }}
           persist-credentials: false
       - uses: actions/labeler@v5
         with:
