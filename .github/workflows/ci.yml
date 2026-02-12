@@ -31,7 +31,6 @@ jobs:
         run: |
           echo "::error title=Lint (black) failed::Run 'black ./src ./tests' locally and commit formatting fixes."
           echo "Contributor docs: ${{ github.server_url }}/${{ github.repository }}/blob/${{ github.sha }}/docs/usage/development.rst"
-          echo "Agent context: ${{ github.server_url }}/${{ github.repository }}/blob/${{ github.sha }}/docs/AI_AGENT_PROMPT_CONTEXT.md"
 
   test-non-vendor:
     name: Test (pytest non-vendor)
@@ -71,4 +70,3 @@ jobs:
         run: |
           echo "::error title=Non-vendor pytest lane failed::Run 'pip install -e .[tests]' then 'pytest -m \"not integration_vendor\"' locally."
           echo "Contributor docs: ${{ github.server_url }}/${{ github.repository }}/blob/${{ github.sha }}/docs/usage/development.rst"
-          echo "Agent context: ${{ github.server_url }}/${{ github.repository }}/blob/${{ github.sha }}/docs/AI_AGENT_PROMPT_CONTEXT.md"

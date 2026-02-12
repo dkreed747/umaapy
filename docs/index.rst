@@ -39,10 +39,6 @@ Features
 
 .. toctree::
    :maxdepth: 2
-   :caption: Internal
+   :caption: Architecture Decisions
 
    adr/index
-   rti_reference_audit_notes
-   wiki/Design/index
-   wiki/Project-Planning/index
-   wiki/Requirements/index
