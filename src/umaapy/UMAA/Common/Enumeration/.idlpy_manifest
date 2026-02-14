@@ -1,0 +1,8 @@
+EnumerationSets
+LineSegmentEnumModule
+OnOffStatusEnumModule
+PrecipitationEnumModule
+ResourceAllocationStatusEnumModule
+SpecificLOIEnumModule
+
+BooleanEnumType

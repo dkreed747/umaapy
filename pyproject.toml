@@ -28,6 +28,9 @@ tests = [
   "pytest>=8.4.1",
   "pytest-cov>=6.2.1",
 ]
+cyclone = [
+  "cyclonedds-nightly==2025.11.25",
+]
 docs = [
   "Sphinx>=8.2.3",
   "sphinx-autodoc-typehints>=3.2.0",
@@ -61,6 +64,7 @@ extend-exclude = '''
 (
   src/umaapy/umaa_types\.py
   | umaa_types\.py$
+  | src/umaapy/UMAA/
 )
 '''
 
@@ -80,10 +84,16 @@ version_file = "src/umaapy/_version.py"
 
 [tool.coverage.run]
 omit = [
-  "src/umaapy/umaa_types.py"
+  "src/umaapy/umaa_types.py",
+  "src/umaapy/UMAA/*",
+  "*/umaapy/UMAA/*",
+  "*\\umaapy\\UMAA\\*",
 ]
 
 [tool.coverage.report]
 omit = [
-  "src/umaapy/umaa_types.py"
+  "src/umaapy/umaa_types.py",
+  "src/umaapy/UMAA/*",
+  "*/umaapy/UMAA/*",
+  "*\\umaapy\\UMAA\\*",
 ]

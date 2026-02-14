@@ -9,7 +9,7 @@ Use an editable install so tests and local commands resolve the workspace ``src/
 .. code-block:: bash
 
    python -m pip install --upgrade pip
-   pip install -e .[tests]
+   pip install -e .[tests,cyclone]
 
 Verify import resolution points to this checkout (not a stale site-packages install):
 
@@ -18,6 +18,38 @@ Verify import resolution points to this checkout (not a stale site-packages inst
    UMAAPY_AUTO_INIT=0 python -c "import umaapy,inspect; print(umaapy.__file__)"
 
 Expected output ends with ``src/umaapy/__init__.py`` from your local repository path.
+
+Type Generation
+---------------
+
+Cyclone DDS nightly Python bindings are required for Python 3.13 and type generation:
+
+.. code-block:: bash
+
+   pip install cyclonedds-nightly==2025.11.25
+
+Generate types from all IDL files under ``specs/idls/``:
+
+.. code-block:: bash
+
+   make generate-types-clean
+
+Equivalent direct script invocation:
+
+.. code-block:: bash
+
+   python scripts/generate_types.py --clean --verbose
+
+This writes generated code under ``src/umaapy/UMAA/`` (package tree, not a single file).
+
+CI validates generated output drift in a dedicated Windows job by regenerating types and checking for tracked/untracked changes in
+``src/umaapy/UMAA/``. If CI fails this check, regenerate locally and commit the updated generated files.
+
+Troubleshooting:
+
+- With ``cyclonedds-nightly==2025.11.25``, run generation on Windows; current Linux nightly ``idlc`` can segfault.
+- If ``idlc`` is not on ``PATH``, set ``IDLC_PATH=/path/to/idlc`` before running generation.
+- Use ``--verbose`` to print per-file generation progress and failures.
 
 Testing Workflow
 ----------------

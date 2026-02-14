@@ -1,7 +1,19 @@
 [run]
 source = umaapy
+omit =
+    src/umaapy/umaa_types.py
+    src/umaapy/UMAA/*
+    */umaapy/UMAA/*
+    *\umaapy\UMAA\*
 
 branch = True
+
+[report]
+omit =
+    src/umaapy/umaa_types.py
+    src/umaapy/UMAA/*
+    */umaapy/UMAA/*
+    *\umaapy\UMAA\*
 
 [paths]
 source =

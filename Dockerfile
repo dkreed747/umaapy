@@ -49,4 +49,5 @@ RUN apt-get update && \
       rti-connext-dds-${CONNEXTDDS_VERSION}-tools-all \
       rti-connext-dds-${CONNEXTDDS_VERSION}-services-all && \
     rm -rf /var/lib/apt/lists/* && \
-    pip install -r requirements.txt
+    pip install -r requirements.txt && \
+    pip install cyclonedds-nightly==2025.11.25
