@@ -10,3 +10,4 @@
 *.html text eol=lf
 *.md text eol=lf
 *.rst text eol=lf
+src/umaapy/UMAA/** linguist-generated=true
