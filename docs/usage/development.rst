@@ -42,6 +42,10 @@ Equivalent direct script invocation:
 
 This writes generated code under ``src/umaapy/UMAA/`` (package tree, not a single file).
 
+A successful run prints a summary line::
+
+   Generated Cyclone Python types successfully: N IDL files processed, M Python files written, B bytes in src/umaapy/UMAA/.
+
 CI validates generated output drift in a dedicated Windows job by regenerating types and checking for tracked/untracked changes in
 ``src/umaapy/UMAA/``. If CI fails this check, regenerate locally and commit the updated generated files.
 
