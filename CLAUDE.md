@@ -15,35 +15,21 @@ UMAAPy is a Python SDK for building UMAA (Unmanned Maritime Autonomy Architectur
 
 **The project is actively migrating away from RTI Connext DDS to CycloneDDS as the sole runtime backend.** RTI is a proprietary vendor SDK requiring a paid license; CycloneDDS is open source (Apache 2.0) and removes all commercial toolchain dependencies.
 
-This is a breaking-change release tracked as **UMAAPy 2.0.0**. All new work must be oriented toward the Cyclone-first architecture:
+This is a breaking-change release tracked as **UMAAPy 2.0.0**. All new work must target CycloneDDS directly:
 
 - **Do not add new RTI Connext DDS dependencies or deepen RTI coupling.** The current `rti.connext>=7.5.0` in `pyproject.toml` is being removed as part of P2.
 - **Do not add RTI imports to any new source files.** Existing RTI imports in `src/umaapy/core/` and `src/umaapy/util/dds_configurator.py` are being actively replaced.
-- **Prefer the middleware port/adapter pattern.** The P1 epic established middleware port contracts and a fake adapter for unit testing. New code should depend on port interfaces, not on `rti.connextdds` directly.
+- **Hard-couple new code to CycloneDDS.** Earlier planning considered a middleware port/adapter abstraction layer, but that added complexity without sufficient benefit. UMAAPy 2.0.0 will be directly coupled to `cyclonedds` — there is no need for adapter interfaces or separate port contracts.
 
 ### Roadmap Phases
 
 | Phase | Milestone | Status | Key Work |
 |---|---|---|---|
-| **P1** | Middleware-Agnostic Unit Test Foundation | ~70% complete | Port contracts (#16), fake adapter (#17), core module decoupling (#18–20), type generation (#21–22), RTI-free devcontainer (#23) |
-| **P2** | Cyclone-First Runtime Migration | Not started | CycloneMiddlewareAdapter (#24), adapter contract tests (#25), report/config/command runtime migration (#26–28), Cyclone integration CI lane (#29–30), 2.0.0 release candidate (#31) |
+| **P1** | RTI-Free Unit Test Foundation | ~70% complete | RTI stub injection for unit tests (#16–20), type generation (#21–22), RTI-free devcontainer (#23) |
+| **P2** | Cyclone-First Runtime Migration | Not started | Replace DDSConfigurator with direct CycloneDDS calls (#24–25), migrate report/config/command (#26–28), Cyclone integration CI lane (#29–30), 2.0.0 release candidate (#31) |
 | **P3** | Hardening and Documentation Excellence | Not started | Regression tests (#32), soak/stability testing (#33), architecture docs (#34), RTI-to-Cyclone migration guide (#35), containerized examples (#36), final sign-off (#37) |
 
 The P1 → P2 gate is issue #23 (RTI-free devcontainer + CI restoration). P2 → P3 gate is issue #31 (2.0.0 release candidate).
-
-### Architecture Target (P2+)
-
-The target architecture uses a **domain/port/adapter** layering:
-
-```
-core/ (domain)   →   middleware port interfaces   →   CycloneMiddlewareAdapter (runtime)
-                                                  →   FakeMiddlewareAdapter (unit tests)
-```
-
-- **Domain modules** (`core/report_provider.py`, `core/report_consumer.py`, etc.) depend only on port interfaces, not on any specific DDS SDK.
-- **Middleware ports** (contracts added in P1) define the participant, topic, reader, writer, and listener abstractions.
-- **CycloneMiddlewareAdapter** (P2 work, `src/umaapy/`) implements the ports using `cyclonedds`.
-- **FakeMiddlewareAdapter** (P1 work) implements the ports in-process for deterministic unit tests.
 
 ### Issue Labels
 
@@ -341,6 +327,34 @@ docker-compose run --rm umaapy pytest
 
 The current `Dockerfile` produces `dkreed747/umaapy-dev:latest` and contains RTI Connext DDS 7.5.0. **This is being replaced** in P1 (#23) with an RTI-free Linux image based on Debian Bookworm + Python 3.13 + CycloneDDS only.
 
+## UMAA 6.0 Specification Reference
+
+When implementing or reviewing any UMAA service, message type, or topic definition, **consult the bundled UMAA 6.0 specification documents first**. They are the authoritative source of truth for field semantics, data types, topic naming, QoS requirements, and service behaviour.
+
+All spec documents live under `specs/`:
+
+| File | Coverage |
+|---|---|
+| `UMAA-ADD.pdf` | Architecture & Design Document — top-level system architecture |
+| `UMAA-Component-Definitions.pdf` | Component roles, interfaces, and interaction patterns |
+| `UMAA-SPEC-CO.pdf` | Communications (CO) — comms channel config, control, status |
+| `UMAA-SPEC-EO.pdf` | Equipment Operations (EO) — propulsion, power, anchors, ballast |
+| `UMAA-SPEC-EXP.pdf` | Experimental (EXP) — in-development / provisional services |
+| `UMAA-SPEC-MM.pdf` | Mission Management (MM) — mission plans, objectives, tasks |
+| `UMAA-SPEC-MO.pdf` | Motion Operations (MO) — waypoint, vector, hover, drift control |
+| `UMAA-SPEC-SA.pdf` | Situational Awareness (SA) — pose, velocity, contacts, weather |
+| `UMAA-SPEC-SEM.pdf` | Sensor Management (SEM) — sonar, GPS, inertial, illuminators |
+| `UMAA-SPEC-SO.pdf` | Ship Operations (SO) — health, BIT, logging, resource management |
+
+Each service also has a companion Markdown summary at `specs/idls/UMAA/<domain>/<ServiceName>/<ServiceName>.md` that is easier to skim than the full PDF.
+
+### How to use the specs
+
+- **Field names and types**: The IDL files under `specs/idls/` define the exact field names used in code. The PDF specs describe what each field means.
+- **Topic naming**: UMAA topic names mirror the IDL namespace hierarchy (e.g. `UMAA::MO::GlobalVectorControl::GlobalVectorControlCommandType`). The specs document the canonical names.
+- **QoS requirements**: Each service spec describes the intended reliability, durability, and ownership QoS. These map to the `UmaaQosProfileCategory` values (`REPORT`, `COMMAND`, `CONFIG`) in `dds_configurator.py`.
+- **Service interaction patterns**: The specs describe which message types are paired (e.g. Command + CommandStatus + AckReport) and the expected lifecycle.
+
 ## Common Pitfalls
 
 - **Auto-init in tests**: Always set `UMAAPY_AUTO_INIT=0` in test environments or before importing `umaapy`. The `conftest.py` does this via `os.environ.setdefault`, but manual scripts must do it explicitly.
@@ -349,6 +363,6 @@ The current `Dockerfile` produces `dkreed747/umaapy-dev:latest` and contains RTI
 - **Black exclusions**: Do not run Black on `umaa_types.py` or anything under `UMAA/`. The `pyproject.toml` `extend-exclude` handles this, but be aware when using `--include` overrides.
 - **Topic names**: `topic_from_type(SomeType)` converts `_` separators in the class name to `::`, matching UMAA DDS topic naming conventions.
 - **RTI license detection**: `conftest.py` checks `$RTI_LICENSE_FILE` and `$NDDSHOME/rti_license.dat`. Without a valid license, all `integration_vendor` tests are skipped automatically.
-- **Do not add RTI imports**: Any new source file that imports from `rti.connextdds` moves in the wrong direction. New modules must depend on port interfaces. Existing RTI imports are being removed in P2 (#26–28).
+- **Do not add RTI imports**: Any new source file that imports from `rti.connextdds` moves in the wrong direction. New modules must use `cyclonedds` directly. Existing RTI imports are being removed in P2 (#26–28).
 - **Hidden RTI fallback**: When removing RTI imports, audit all transitive imports — a common mistake is removing the direct import but leaving an indirect path that still pulls in RTI. Run with `CONNEXT_AVAILABLE=False` logic or check via `import rti.connextdds` assertions in CI.
 - **Cyclonedds version pin**: The type generation and runtime adapter are pinned to `cyclonedds-nightly==2025.11.25`. Do not change this without regenerating all types and updating CI.
