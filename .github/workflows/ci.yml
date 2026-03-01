@@ -64,6 +64,12 @@ jobs:
             $untracked
             exit 1
           }
+      - name: Type-gen failure guidance
+        if: failure()
+        shell: bash
+        run: |
+          echo "::error title=Type generation drift detected::Run 'python scripts/generate_types.py --clean' locally and commit changes under src/umaapy/UMAA/."
+          echo "Contributor docs: ${{ github.server_url }}/${{ github.repository }}/blob/${{ github.sha }}/docs/usage/development.rst"
 
   test-non-vendor:
     name: Test (pytest non-vendor)
